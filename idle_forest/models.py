@@ -24,6 +24,24 @@ class EquipmentSlot(str, Enum):
     RING = "ring"
 
 
+RARITY_APPEARANCE: dict[Rarity, dict[str, str]] = {
+    Rarity.WHITE: {"primary": "#d8dde4", "accent": "#8f9aa4", "glow": "#d8dde4"},
+    Rarity.GREEN: {"primary": "#5fd18b", "accent": "#2f8f5c", "glow": "#36b37e"},
+    Rarity.BLUE: {"primary": "#68b7ff", "accent": "#2b78c2", "glow": "#2684ff"},
+    Rarity.PURPLE: {"primary": "#b779ff", "accent": "#7543bd", "glow": "#9b5cff"},
+    Rarity.GOLD: {"primary": "#ffdc7d", "accent": "#b98221", "glow": "#ffca55"},
+    Rarity.RED: {"primary": "#ff7a7c", "accent": "#9e2e3a", "glow": "#ff4d4f"},
+}
+
+SLOT_ICON_SHAPES: dict[EquipmentSlot, str] = {
+    EquipmentSlot.WEAPON: "slash",
+    EquipmentSlot.HELMET: "crest",
+    EquipmentSlot.ARMOR: "chest",
+    EquipmentSlot.BOOTS: "step",
+    EquipmentSlot.RING: "halo",
+}
+
+
 class TalentTier(str, Enum):
     COMMON = "common"
     UNCOMMON = "uncommon"
@@ -61,6 +79,10 @@ class Equipment:
     attack: int = 0
     defense: int = 0
     max_hp: int = 0
+    attack_speed: float = 0.0
+    hp_regen: float = 0.0
+    attack_range: float = 0.0
+    weapon_type: str | None = None
     owner_id: str | None = None
     tradable: bool = True
     special: bool = False
@@ -72,7 +94,52 @@ class Equipment:
     @property
     def score(self) -> int:
         special_bonus = 12 if self.special else 0
-        return self.attack * 4 + self.defense * 3 + self.max_hp + self.level * 2 + special_bonus
+        speed_bonus = int(self.attack_speed * 30)
+        regen_bonus = int(self.hp_regen * 4)
+        range_bonus = int(self.attack_range * 0.08)
+        return (
+            self.attack * 4
+            + self.defense * 3
+            + self.max_hp
+            + self.level * 2
+            + speed_bonus
+            + regen_bonus
+            + range_bonus
+            + special_bonus
+        )
+
+    def appearance(self) -> dict[str, Any]:
+        palette = dict(RARITY_APPEARANCE[self.rarity])
+        model = self.slot.value
+        accent = self.set_id or self.rarity.value
+
+        if self.slot == EquipmentSlot.WEAPON:
+            model = self.weapon_type or "blade"
+            if self.id.startswith("starter_wooden_sword"):
+                model = "wooden_blade"
+                palette = {
+                    "primary": "#d2a15f",
+                    "accent": "#7a4b2a",
+                    "glow": "#d8dde4",
+                }
+                accent = "starter"
+        elif self.slot == EquipmentSlot.HELMET:
+            model = "crown_helm" if self.rarity in {Rarity.GOLD, Rarity.RED} else "visor_helm"
+        elif self.slot == EquipmentSlot.ARMOR:
+            model = "plate_mail" if self.rarity in {Rarity.PURPLE, Rarity.GOLD, Rarity.RED} else "leather_mail"
+        elif self.slot == EquipmentSlot.BOOTS:
+            model = "winged_boots" if self.attack_speed > 0 or self.hp_regen > 0.18 else "travel_boots"
+        elif self.slot == EquipmentSlot.RING:
+            model = "gem_ring" if self.rarity in {Rarity.BLUE, Rarity.PURPLE, Rarity.GOLD, Rarity.RED} else "iron_ring"
+
+        return {
+            "slot": self.slot.value,
+            "model": model,
+            "palette": palette,
+            "accent": accent,
+            "aura": self.special or self.rarity in {Rarity.PURPLE, Rarity.GOLD, Rarity.RED},
+            "icon_shape": SLOT_ICON_SHAPES[self.slot],
+        }
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -84,6 +151,10 @@ class Equipment:
             "attack": self.attack,
             "defense": self.defense,
             "max_hp": self.max_hp,
+            "attack_speed": round(self.attack_speed, 2),
+            "hp_regen": round(self.hp_regen, 2),
+            "attack_range": round(self.attack_range, 2),
+            "weapon_type": self.weapon_type,
             "owner_id": self.owner_id,
             "tradable": self.tradable,
             "score": self.score,
@@ -92,6 +163,7 @@ class Equipment:
             "set_name": self.set_name,
             "set_piece": self.set_piece,
             "set_bonus": self.set_bonus,
+            "appearance": self.appearance(),
         }
 
 
@@ -99,11 +171,15 @@ class Equipment:
 class Hero:
     id: str
     name: str
+    gender: str = "male"
     level: int = 1
     exp: int = 0
     base_attack: int = 8
     base_defense: int = 2
     base_max_hp: int = 80
+    base_attack_speed: float = 1.0
+    base_hp_regen: float = 2.0
+    base_attack_range: float = 68.0
     hp: int = 80
     gold: int = 0
     x: float = 0.0
@@ -144,6 +220,25 @@ class Hero:
     @property
     def move_speed(self) -> float:
         return self.speed * (1 + self.talent_pct("move_speed_pct"))
+
+    @property
+    def attack_speed(self) -> float:
+        equipment_bonus = sum(item.attack_speed for item in self.equipped.values())
+        return max(0.2, self.base_attack_speed + equipment_bonus)
+
+    @property
+    def attack_interval(self) -> float:
+        return 1.0 / self.attack_speed
+
+    @property
+    def hp_regen(self) -> float:
+        equipment_bonus = sum(item.hp_regen for item in self.equipped.values())
+        return max(0.0, self.base_hp_regen + equipment_bonus)
+
+    @property
+    def attack_range(self) -> float:
+        equipment_bonus = sum(item.attack_range for item in self.equipped.values())
+        return max(self.base_attack_range, self.base_attack_range + equipment_bonus)
 
     @property
     def drop_rate_bonus(self) -> float:
@@ -222,13 +317,19 @@ class Hero:
         return {
             "id": self.id,
             "name": self.name,
+            "gender": self.gender,
             "level": self.level,
             "exp": self.exp,
             "exp_to_next_level": self.exp_to_next_level,
+            "exp_progress": round(self.exp / max(1, self.exp_to_next_level), 4),
             "hp": self.hp,
             "max_hp": self.max_hp,
             "attack": self.attack_power,
             "defense": self.defense_power,
+            "attack_speed": round(self.attack_speed, 2),
+            "attack_interval": round(self.attack_interval, 2),
+            "attack_range": round(self.attack_range, 2),
+            "hp_regen": round(self.hp_regen, 2),
             "gold": self.gold,
             "position": {"x": round(self.x, 2), "y": round(self.y, 2)},
             "speed": round(self.move_speed, 2),
@@ -239,6 +340,13 @@ class Hero:
             "equipped": {
                 slot.value: item.to_dict() for slot, item in self.equipped.items()
             },
+            "equipment_slots": [
+                {
+                    "slot": slot.value,
+                    "item": self.equipped[slot].to_dict() if slot in self.equipped else None,
+                }
+                for slot in EquipmentSlot
+            ],
             "set_bonuses": list(self.active_set_bonuses().values()),
         }
 
@@ -258,6 +366,7 @@ class Monster:
     y: float
     role: str = "minion"
     theme: str = "forest"
+    threat: float = 1.0
 
     @property
     def is_alive(self) -> bool:
@@ -277,6 +386,7 @@ class Monster:
             "position": {"x": round(self.x, 2), "y": round(self.y, 2)},
             "role": self.role,
             "theme": self.theme,
+            "threat": round(self.threat, 2),
         }
 
 

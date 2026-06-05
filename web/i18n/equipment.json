@@ -1,0 +1,210 @@
+{
+  "Starter Wooden Sword": {
+    "zh-CN": "新手木剑",
+    "en-US": "Starter Wooden Sword"
+  },
+  "新手木剑": {
+    "zh-CN": "新手木剑",
+    "en-US": "Starter Wooden Sword"
+  },
+  "Plain": {
+    "zh-CN": "朴素",
+    "en-US": "Plain"
+  },
+  "Worn": {
+    "zh-CN": "磨旧",
+    "en-US": "Worn"
+  },
+  "Simple": {
+    "zh-CN": "简易",
+    "en-US": "Simple"
+  },
+  "Fresh": {
+    "zh-CN": "新绿",
+    "en-US": "Fresh"
+  },
+  "Rooted": {
+    "zh-CN": "根缠",
+    "en-US": "Rooted"
+  },
+  "Hunter's": {
+    "zh-CN": "猎人",
+    "en-US": "Hunter's"
+  },
+  "Moonlit": {
+    "zh-CN": "月辉",
+    "en-US": "Moonlit"
+  },
+  "River": {
+    "zh-CN": "溪流",
+    "en-US": "River"
+  },
+  "Runed": {
+    "zh-CN": "符文",
+    "en-US": "Runed"
+  },
+  "Elder": {
+    "zh-CN": "长老",
+    "en-US": "Elder"
+  },
+  "Spirit": {
+    "zh-CN": "灵魂",
+    "en-US": "Spirit"
+  },
+  "Twilight": {
+    "zh-CN": "暮光",
+    "en-US": "Twilight"
+  },
+  "Sunforged": {
+    "zh-CN": "日铸",
+    "en-US": "Sunforged"
+  },
+  "Royal": {
+    "zh-CN": "王家",
+    "en-US": "Royal"
+  },
+  "Ancient": {
+    "zh-CN": "远古",
+    "en-US": "Ancient"
+  },
+  "Mythic": {
+    "zh-CN": "神话",
+    "en-US": "Mythic"
+  },
+  "Dragonbone": {
+    "zh-CN": "龙骨",
+    "en-US": "Dragonbone"
+  },
+  "Worldroot": {
+    "zh-CN": "世界根",
+    "en-US": "Worldroot"
+  },
+  "Axe": {
+    "zh-CN": "斧",
+    "en-US": "Axe"
+  },
+  "Blade": {
+    "zh-CN": "刃",
+    "en-US": "Blade"
+  },
+  "Spear": {
+    "zh-CN": "矛",
+    "en-US": "Spear"
+  },
+  "Hatchet": {
+    "zh-CN": "手斧",
+    "en-US": "Hatchet"
+  },
+  "Cap": {
+    "zh-CN": "帽",
+    "en-US": "Cap"
+  },
+  "Helm": {
+    "zh-CN": "盔",
+    "en-US": "Helm"
+  },
+  "Mask": {
+    "zh-CN": "面具",
+    "en-US": "Mask"
+  },
+  "Crown": {
+    "zh-CN": "王冠",
+    "en-US": "Crown"
+  },
+  "Coat": {
+    "zh-CN": "外套",
+    "en-US": "Coat"
+  },
+  "Vest": {
+    "zh-CN": "战衣",
+    "en-US": "Vest"
+  },
+  "Mail": {
+    "zh-CN": "锁甲",
+    "en-US": "Mail"
+  },
+  "Guard": {
+    "zh-CN": "护甲",
+    "en-US": "Guard"
+  },
+  "Boots": {
+    "zh-CN": "靴",
+    "en-US": "Boots"
+  },
+  "Greaves": {
+    "zh-CN": "胫甲",
+    "en-US": "Greaves"
+  },
+  "Steps": {
+    "zh-CN": "踏靴",
+    "en-US": "Steps"
+  },
+  "Treads": {
+    "zh-CN": "行靴",
+    "en-US": "Treads"
+  },
+  "Ring": {
+    "zh-CN": "戒指",
+    "en-US": "Ring"
+  },
+  "Charm": {
+    "zh-CN": "护符",
+    "en-US": "Charm"
+  },
+  "Loop": {
+    "zh-CN": "指环",
+    "en-US": "Loop"
+  },
+  "Band": {
+    "zh-CN": "戒环",
+    "en-US": "Band"
+  },
+  "Hoardbound": {
+    "zh-CN": "守财者",
+    "en-US": "Hoardbound"
+  },
+  "Luckseeker": {
+    "zh-CN": "逐运者",
+    "en-US": "Luckseeker"
+  },
+  "Mimicbane": {
+    "zh-CN": "宝箱克星",
+    "en-US": "Mimicbane"
+  },
+  "Fang": {
+    "zh-CN": "獠牙",
+    "en-US": "Fang"
+  },
+  "Visage": {
+    "zh-CN": "面容",
+    "en-US": "Visage"
+  },
+  "Carapace": {
+    "zh-CN": "甲壳",
+    "en-US": "Carapace"
+  },
+  "Strides": {
+    "zh-CN": "疾步",
+    "en-US": "Strides"
+  },
+  "Seal": {
+    "zh-CN": "印戒",
+    "en-US": "Seal"
+  },
+  "Greed Engine": {
+    "zh-CN": "贪婪引擎",
+    "en-US": "Greed Engine"
+  },
+  "Fortune Pulse": {
+    "zh-CN": "幸运脉冲",
+    "en-US": "Fortune Pulse"
+  },
+  "Chestbreaker Oath": {
+    "zh-CN": "破箱誓约",
+    "en-US": "Chestbreaker Oath"
+  },
+  "Unknown Set": {
+    "zh-CN": "未知套装",
+    "en-US": "Unknown Set"
+  }
+}

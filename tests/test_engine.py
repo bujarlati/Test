@@ -3,13 +3,129 @@ from __future__ import annotations
 import unittest
 
 from idle_forest import GameEngine
-from idle_forest.config import TREASURE_MIMIC_PITY_THRESHOLD
+from idle_forest.config import (
+    HERO_REVIVE_SECONDS,
+    MONSTER_APPROACH_DISTANCE,
+    TREASURE_MIMIC_PITY_THRESHOLD,
+)
 from idle_forest.content import create_treasure_mimic, generate_equipment
-from idle_forest.models import Equipment, EquipmentSlot, Rarity, TalentTier
+from idle_forest.models import Equipment, EquipmentSlot, Monster, Rarity, TalentTier
 from idle_forest.talents import TALENT_CATALOG
 
 
 class GameEngineTests(unittest.TestCase):
+    def test_new_hero_starts_with_equipped_wooden_sword(self) -> None:
+        engine = GameEngine(seed=30)
+        snapshot = engine.snapshot()
+
+        weapon = snapshot["hero"]["equipped"].get("weapon")
+        self.assertIsNotNone(weapon)
+        assert weapon is not None
+        self.assertEqual(weapon["name"], "Starter Wooden Sword")
+        self.assertEqual(weapon["weapon_type"], "blade")
+        self.assertFalse(weapon["tradable"])
+        self.assertEqual(snapshot["scene"]["entities"][0]["weapon"]["id"], weapon["id"])
+
+    def test_equipment_snapshot_includes_visual_appearance(self) -> None:
+        engine = GameEngine(seed=33)
+        snapshot = engine.snapshot()
+        weapon = snapshot["hero"]["equipped"]["weapon"]
+        hero_entity = snapshot["scene"]["entities"][0]
+
+        self.assertIn("appearance", weapon)
+        self.assertEqual(weapon["appearance"]["slot"], "weapon")
+        self.assertEqual(weapon["appearance"]["model"], "wooden_blade")
+        self.assertIn("palette", weapon["appearance"])
+        self.assertIn("primary", weapon["appearance"]["palette"])
+        self.assertIn("accent", weapon["appearance"]["palette"])
+        self.assertIn("glow", weapon["appearance"]["palette"])
+        self.assertEqual(
+            hero_entity["equipped"]["weapon"]["appearance"]["model"],
+            weapon["appearance"]["model"],
+        )
+        self.assertEqual(
+            [talent["id"] for talent in hero_entity["talents"]],
+            [talent["id"] for talent in snapshot["hero"]["talents"]],
+        )
+        self.assertEqual(hero_entity["talent_effects"], snapshot["hero"]["talent_effects"])
+
+    def test_loot_event_exposes_item_name_and_appearance_for_scene_popups(self) -> None:
+        engine = GameEngine(seed=34)
+        item = Equipment(
+            id="drop_yitian",
+            name="Yitian Sword",
+            slot=EquipmentSlot.WEAPON,
+            rarity=Rarity.GOLD,
+            level=8,
+            attack=42,
+            weapon_type="blade",
+        )
+
+        engine._add_loot_event(item)
+
+        loot_event = [
+            event
+            for event in engine.snapshot()["events"]
+            if event["data"].get("item_id") == "drop_yitian"
+        ][-1]
+        self.assertEqual(loot_event["data"]["item_name"], "Yitian Sword")
+        self.assertEqual(loot_event["data"]["item_appearance"]["slot"], "weapon")
+        self.assertEqual(loot_event["data"]["item_appearance"]["palette"]["glow"], "#ffca55")
+
+    def test_hero_revives_in_place_and_keeps_current_monster(self) -> None:
+        engine = GameEngine(seed=31)
+        engine.hero.talents = []
+        engine.hero.base_defense = 0
+        engine.hero.hp = 5
+        engine.hero.x = 120.0
+        monster = Monster(
+            id="test_brute",
+            kind="test_brute",
+            level=1,
+            max_hp=80,
+            hp=37,
+            attack=20,
+            defense=0,
+            exp_reward=0,
+            gold_reward=0,
+            x=engine.hero.x + 20,
+            y=engine.hero.y,
+        )
+        engine.active_monster = monster
+
+        engine._monster_attack()
+        defeated_snapshot = engine.snapshot()
+
+        self.assertEqual(engine.hero.hp, 0)
+        self.assertEqual(engine.hero.x, 120.0)
+        self.assertIs(engine.active_monster, monster)
+        self.assertEqual(engine.active_monster.hp, 37)
+        self.assertTrue(defeated_snapshot["hero"]["reviving"])
+        self.assertEqual(defeated_snapshot["scene"]["entities"][0]["state"], "reviving")
+
+        engine.advance(HERO_REVIVE_SECONDS - 0.25)
+        self.assertEqual(engine.hero.hp, 0)
+        self.assertIs(engine.active_monster, monster)
+
+        revived_snapshot = engine.advance(0.25)
+        self.assertEqual(engine.hero.hp, engine.hero.max_hp)
+        self.assertIs(engine.active_monster, monster)
+        self.assertFalse(revived_snapshot["hero"]["reviving"])
+        self.assertEqual(revived_snapshot["monster"]["id"], "test_brute")
+
+    def test_snapshot_exposes_experience_progress_and_equipment_slots(self) -> None:
+        engine = GameEngine(seed=32)
+        snapshot = engine.snapshot()
+        hero = snapshot["hero"]
+
+        self.assertIn("exp_progress", hero)
+        self.assertEqual(hero["exp_progress"], 0)
+        self.assertIn("equipment_slots", hero)
+        slots = {slot["slot"]: slot for slot in hero["equipment_slots"]}
+        self.assertEqual(set(slots), {"weapon", "helmet", "armor", "boots", "ring"})
+        self.assertIsNotNone(slots["weapon"]["item"])
+        self.assertIsNone(slots["helmet"]["item"])
+
     def test_hero_progresses_and_snapshot_has_scene_entities(self) -> None:
         engine = GameEngine(seed=1)
         snapshot = engine.advance(10)
@@ -27,6 +143,106 @@ class GameEngineTests(unittest.TestCase):
         kill_events = [event for event in snapshot["events"] if event["kind"] == "monster_kill"]
         self.assertGreater(len(kill_events), 0)
         self.assertGreaterEqual(snapshot["hero"]["gold"], 0)
+
+    def test_monster_spawns_ahead_beyond_attack_range(self) -> None:
+        engine = GameEngine(seed=21)
+
+        engine._spawn_monster()
+
+        self.assertIsNotNone(engine.active_monster)
+        assert engine.active_monster is not None
+        distance = engine.active_monster.x - engine.hero.x
+        self.assertGreaterEqual(MONSTER_APPROACH_DISTANCE, 800.0)
+        self.assertGreaterEqual(distance, 800.0)
+
+    def test_deepen_forest_increases_difficulty_and_changes_scene(self) -> None:
+        engine = GameEngine(seed=35)
+        first = engine.snapshot()
+
+        second = engine.deepen_forest()
+        engine._spawn_monster()
+        assert engine.active_monster is not None
+
+        self.assertEqual(first["forest"]["depth"], 1)
+        self.assertEqual(second["forest"]["depth"], 2)
+        self.assertEqual(second["scene"]["biome"], "deep_forest")
+        self.assertEqual(engine.active_monster.theme, "deep_forest")
+        self.assertGreaterEqual(engine.active_monster.level, engine.hero.level + 3)
+        self.assertIn("threat", engine.active_monster.to_dict())
+        self.assertGreater(engine.active_monster.to_dict()["threat"], 1.0)
+
+    def test_forest_recommended_power_scales_and_can_retreat(self) -> None:
+        engine = GameEngine(seed=36)
+        first = engine.snapshot()
+
+        second = engine.deepen_forest()
+        third = engine.deepen_forest()
+        retreated = engine.retreat_forest()
+        shallow = engine.retreat_forest()
+        still_shallow = engine.retreat_forest()
+
+        self.assertEqual(first["forest"]["depth"], 1)
+        self.assertEqual(second["forest"]["depth"], 2)
+        self.assertEqual(third["forest"]["depth"], 3)
+        self.assertGreater(second["forest"]["recommended_power"], first["forest"]["recommended_power"])
+        self.assertGreater(third["forest"]["recommended_power"], second["forest"]["recommended_power"])
+        self.assertEqual(retreated["forest"]["depth"], 2)
+        self.assertLess(retreated["forest"]["recommended_power"], third["forest"]["recommended_power"])
+        self.assertEqual(shallow["forest"]["depth"], 1)
+        self.assertEqual(still_shallow["forest"]["depth"], 1)
+        self.assertEqual(still_shallow["scene"]["biome"], "forest")
+
+    def test_rift_monster_spawns_offscreen_ahead_of_hero(self) -> None:
+        engine = GameEngine(seed=27)
+        engine.enter_rift()
+
+        engine._spawn_rift_monster()
+
+        self.assertIsNotNone(engine.active_monster)
+        assert engine.active_monster is not None
+        distance = engine.active_monster.x - engine.hero.x
+        self.assertGreaterEqual(distance, 800.0)
+
+    def test_hero_waits_to_attack_until_inside_weapon_range(self) -> None:
+        engine = GameEngine(seed=22)
+        engine._spawn_monster()
+        assert engine.active_monster is not None
+        engine.active_monster.max_hp = 500
+        engine.active_monster.hp = 500
+        engine.active_monster.x = engine.hero.x + 140
+        engine._hero_attack_timer = 999
+
+        engine._advance_combat(0.25)
+
+        self.assertEqual(engine.active_monster.hp, 500)
+
+    def test_attack_speed_controls_attack_interval(self) -> None:
+        engine = GameEngine(seed=23)
+        engine.hero.equipped.clear()
+        engine.hero.base_attack_speed = 2.0
+        engine._spawn_monster()
+        assert engine.active_monster is not None
+        engine.active_monster.max_hp = 500
+        engine.active_monster.hp = 500
+        engine.active_monster.x = engine.hero.x + 10
+
+        engine._advance_combat(0.49)
+        self.assertEqual(engine.active_monster.hp, 500)
+
+        engine._advance_combat(0.02)
+        assert engine.active_monster is not None
+        self.assertLess(engine.active_monster.hp, 500)
+
+    def test_hp_regen_controls_travel_healing(self) -> None:
+        engine = GameEngine(seed=24)
+        engine.hero.base_max_hp = 100
+        engine.hero.hp = 40
+        engine.hero.base_hp_regen = 8.0
+        engine._next_encounter_x = 9999
+
+        engine.advance(1)
+
+        self.assertEqual(engine.hero.hp, 48)
 
     def test_equip_best_uses_highest_score_for_slot(self) -> None:
         engine = GameEngine(seed=3)
@@ -245,6 +461,40 @@ class GameEngineTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             engine.evolve_talent(engine.hero.talents[0].id)
+
+    def test_engine_accepts_character_name_gender_and_talents(self) -> None:
+        talents = TALENT_CATALOG[TalentTier.COMMON][:3]
+
+        engine = GameEngine(
+            seed=25,
+            hero_name="Astra",
+            hero_gender="female",
+            starting_talents=talents,
+        )
+        snapshot = engine.snapshot()
+
+        self.assertEqual(snapshot["hero"]["name"], "Astra")
+        self.assertEqual(snapshot["hero"]["gender"], "female")
+        self.assertEqual(snapshot["scene"]["entities"][0]["gender"], "female")
+        self.assertEqual(
+            [talent["id"] for talent in snapshot["hero"]["talents"]],
+            [talent.id for talent in talents],
+        )
+
+    def test_profile_rolls_are_limited_to_three(self) -> None:
+        from server import ProfileSession
+
+        session = ProfileSession(seed=26)
+        first = session.roll(name="Astra", gender="female")
+        second = session.roll(name="Astra", gender="female")
+        third = session.roll(name="Astra", gender="female")
+
+        self.assertEqual(first["rolls_remaining"], 2)
+        self.assertEqual(second["rolls_remaining"], 1)
+        self.assertEqual(third["rolls_remaining"], 0)
+        self.assertEqual(len(third["talents"]), 3)
+        with self.assertRaises(ValueError):
+            session.roll(name="Astra", gender="female")
 
 
 if __name__ == "__main__":

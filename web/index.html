@@ -7,28 +7,75 @@
     <link rel="stylesheet" href="/web/styles.css" />
   </head>
   <body>
+    <section id="profileGate" class="profile-gate">
+      <div class="profile-card">
+        <div class="profile-preview">
+          <div id="profileAvatar" class="profile-avatar male"></div>
+          <div>
+            <h1>林地挂机</h1>
+            <p>创建角色</p>
+          </div>
+        </div>
+        <div class="profile-form">
+          <label class="field">
+            <span>名字</span>
+            <input id="characterNameInput" maxlength="24" placeholder="输入角色名" autocomplete="off" />
+          </label>
+          <div class="field">
+            <span>性别</span>
+            <div class="segmented">
+              <button id="genderMaleButton" class="active" type="button" data-gender="male">男</button>
+              <button id="genderFemaleButton" type="button" data-gender="female">女</button>
+            </div>
+          </div>
+          <div class="roll-head">
+            <strong>初始天赋</strong>
+            <span id="rollCountText">剩余 3 次</span>
+          </div>
+          <div id="creationTalentList" class="creation-talents"></div>
+          <div class="profile-actions">
+            <button id="rollTalentButton" type="button">Roll 天赋</button>
+            <button id="confirmCharacterButton" class="muted" type="button" disabled>确认角色</button>
+          </div>
+          <p id="profileStatusText" class="profile-status"></p>
+        </div>
+      </div>
+    </section>
+
     <main class="app">
       <header class="topbar">
         <div>
           <h1>林地挂机</h1>
           <p id="statusText">连接中</p>
         </div>
-        <div class="resource">
-          <span id="goldText">0</span>
-          <small>金币</small>
+        <div class="top-actions">
+          <button id="settingsButton" class="muted" type="button">设置</button>
+          <button id="newCharacterButton" class="muted" type="button">新角色</button>
+          <div class="resource">
+            <span id="goldText">0</span>
+            <small>金币</small>
+          </div>
         </div>
       </header>
 
       <section class="hero-strip">
         <div class="stat"><span>等级</span><strong id="levelText">1</strong></div>
+        <div class="stat exp-stat">
+          <span>经验</span>
+          <strong id="expText">0 / 0</strong>
+          <div class="mini-meter"><div id="expProgressBar"></div></div>
+        </div>
         <div class="stat wide"><span>生命</span><strong id="hpText">0 / 0</strong></div>
         <div class="stat"><span>攻击</span><strong id="attackText">0</strong></div>
         <div class="stat"><span>防御</span><strong id="defenseText">0</strong></div>
+        <div class="stat"><span>攻速</span><strong id="attackSpeedText">0 / 秒</strong></div>
+        <div class="stat"><span>回复</span><strong id="hpRegenText">0 / 秒</strong></div>
         <div class="stat"><span>战力</span><strong id="powerText">0</strong></div>
       </section>
 
       <section class="stage">
         <canvas id="gameCanvas" width="960" height="520"></canvas>
+        <div id="reviveText" class="revive-banner hidden"></div>
         <div class="stage-hud">
           <div>
             <span id="modeText">森林</span>
@@ -41,6 +88,8 @@
 
       <section class="controls">
         <button id="tickButton">推进 10 秒</button>
+        <button id="deepenForestButton">深入森林</button>
+        <button id="retreatForestButton" class="muted" disabled>远离森林</button>
         <button id="equipBestButton">自动装备</button>
         <button id="resetButton" class="muted">重置</button>
       </section>
@@ -89,6 +138,7 @@
           <div class="panel-head">
             <h2>已装备</h2>
           </div>
+          <div id="equipmentSlotList" class="equipment-slots"></div>
           <div id="equippedList" class="item-list compact"></div>
         </section>
 
@@ -114,6 +164,30 @@
         </section>
       </section>
     </main>
+
+    <section id="settingsPanel" class="settings-panel hidden" aria-hidden="true">
+      <div class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <div class="settings-head">
+          <h2 id="settingsTitle">设置</h2>
+          <button id="settingsCloseButton" class="muted" type="button">关闭</button>
+        </div>
+        <label class="setting-row">
+          <span>暂停</span>
+          <input id="pauseToggle" type="checkbox" />
+        </label>
+        <label class="setting-row">
+          <span>音量</span>
+          <input id="volumeSlider" type="range" min="0" max="100" value="70" />
+        </label>
+        <label class="setting-row">
+          <span>语言</span>
+          <select id="languageSelect">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+          </select>
+        </label>
+      </div>
+    </section>
 
     <script src="/web/app.js"></script>
   </body>

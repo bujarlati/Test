@@ -9,12 +9,14 @@ from typing import Any
 from .config import (
     ENCOUNTER_MAX_DISTANCE,
     ENCOUNTER_MIN_DISTANCE,
-    HERO_ATTACK_INTERVAL,
-    HERO_COMBAT_WALK_SPEED,
+    HERO_ATTACK_RANGE,
+    HERO_ATTACK_SPEED,
     HERO_GROUND_Y,
+    HERO_HP_REGEN,
+    HERO_REVIVE_SECONDS,
     HERO_START_X,
     HERO_WALK_SPEED,
-    MELEE_RANGE,
+    MONSTER_APPROACH_DISTANCE,
     MONSTER_ATTACK_INTERVAL,
     RIFT_BOSS_DROP_BONUS,
     RIFT_DROP_BONUS_PER_FLOOR,
@@ -32,13 +34,14 @@ from .content import (
     create_monster,
     create_rift_decoration,
     create_rift_monster,
+    create_starter_weapon,
     create_treasure_mimic,
     generate_equipment,
     generate_special_set_equipment,
     maybe_drop_equipment,
 )
 from .market import Market, MarketListing
-from .models import Equipment, EquipmentSlot, Event, Hero, Monster, Rarity, RiftRun
+from .models import Equipment, EquipmentSlot, Event, Hero, Monster, Rarity, RiftRun, Talent
 from .talents import (
     TALENT_CATALOG,
     TALENT_TIER_CONFIG,
@@ -58,6 +61,9 @@ class GameEngine:
         self,
         seed: int | None = None,
         hero_id: str = "player_1",
+        hero_name: str = "Forest Runner",
+        hero_gender: str = "male",
+        starting_talents: list[Talent] | None = None,
         starter_gold: int = 80,
     ) -> None:
         self.rng = random.Random(seed)
@@ -65,15 +71,21 @@ class GameEngine:
         self.time_seconds = 0.0
         self.hero = Hero(
             id=hero_id,
-            name="Forest Runner",
+            name=hero_name,
+            gender=hero_gender,
             x=HERO_START_X,
             y=HERO_GROUND_Y,
             speed=HERO_WALK_SPEED,
+            base_attack_speed=HERO_ATTACK_SPEED,
+            base_attack_range=HERO_ATTACK_RANGE,
+            base_hp_regen=HERO_HP_REGEN,
             gold=starter_gold,
         )
-        self.hero.talents = roll_starting_talents(self.rng, 3)
+        self.hero.talents = list(starting_talents) if starting_talents is not None else roll_starting_talents(self.rng, 3)
+        self.hero.equipped[EquipmentSlot.WEAPON] = create_starter_weapon(self.hero.id)
         self.active_monster: Monster | None = None
         self.mode = "forest"
+        self.forest_depth = 1
         self.unlocked_rift_floor = 1
         self.active_rift: RiftRun | None = None
         self.treasure_mimics_defeated = 0
@@ -83,6 +95,8 @@ class GameEngine:
         self.rift_decorations: list[dict[str, object]] = []
         self._hero_attack_timer = 0.0
         self._monster_attack_timer = 0.0
+        self._hero_heal_bank = 0.0
+        self._revive_remaining = 0.0
         self._next_encounter_x = self._roll_next_encounter_x(self.hero.x)
         self._next_decoration_index = 0
         self._next_rift_decoration_index = 0
@@ -174,6 +188,56 @@ class GameEngine:
         self._return_to_forest(self.active_rift.origin_x)
         self._add_event("rift_leave", f"Left floor {floor} rift.", floor=floor)
 
+    def deepen_forest(self) -> dict[str, Any]:
+        if self.mode == "rift" and self.active_rift is not None:
+            raise ValueError("cannot deepen forest while in rift")
+
+        self.forest_depth += 1
+        self.mode = "forest"
+        self.active_monster = None
+        self.hero.x = 0.0
+        self.hero.y = HERO_GROUND_Y
+        self.hero.heal(max(6, self.hero.max_hp // 8))
+        self._hero_attack_timer = 0.0
+        self._monster_attack_timer = 0.0
+        self._revive_remaining = 0.0
+        self._next_encounter_x = self._roll_next_encounter_x(self.hero.x)
+        self.decorations = []
+        self._next_decoration_index = 0
+        self._ensure_scenery_until(900)
+        self._add_event(
+            "forest_deepen",
+            f"Hero pushed into forest depth {self.forest_depth}.",
+            depth=self.forest_depth,
+            monster_level_bonus=self._forest_level_bonus(),
+        )
+        return self.snapshot()
+
+    def retreat_forest(self) -> dict[str, Any]:
+        if self.mode == "rift" and self.active_rift is not None:
+            raise ValueError("cannot retreat forest while in rift")
+
+        self.forest_depth = max(1, self.forest_depth - 1)
+        self.mode = "forest"
+        self.active_monster = None
+        self.hero.x = 0.0
+        self.hero.y = HERO_GROUND_Y
+        self.hero.heal(max(10, self.hero.max_hp // 5))
+        self._hero_attack_timer = 0.0
+        self._monster_attack_timer = 0.0
+        self._revive_remaining = 0.0
+        self._next_encounter_x = self._roll_next_encounter_x(self.hero.x)
+        self.decorations = []
+        self._next_decoration_index = 0
+        self._ensure_scenery_until(900)
+        self._add_event(
+            "forest_retreat",
+            f"Hero retreated to forest depth {self.forest_depth}.",
+            depth=self.forest_depth,
+            monster_level_bonus=self._forest_level_bonus(),
+        )
+        return self.snapshot()
+
     def evolve_talent(self, talent_id: str) -> dict[str, Any]:
         if self.hero.talent_scrolls <= 0:
             raise ValueError("not enough talent evolution scrolls")
@@ -263,17 +327,42 @@ class GameEngine:
                 for decor in self.decorations
                 if camera_x - 120 <= float(decor["x"]) <= camera_x + 980
             ]
-            biome = "forest"
+            biome = "deep_forest" if self.forest_depth > 1 else "forest"
+        hero_weapon = self.hero.equipped.get(EquipmentSlot.WEAPON)
+        hero_snapshot = self.hero.to_dict()
+        hero_snapshot.update(
+            {
+                "reviving": self._revive_remaining > 0,
+                "revive_remaining": round(self._revive_remaining, 2),
+                "revive_duration": HERO_REVIVE_SECONDS,
+            }
+        )
+        hero_state = "walk"
+        if self._revive_remaining > 0:
+            hero_state = "reviving"
+        elif self.active_monster is not None:
+            distance = self.active_monster.x - self.hero.x
+            hero_state = "combat" if distance <= self.hero.attack_range else "approach"
         entities: list[dict[str, Any]] = [
             {
                 "id": self.hero.id,
                 "type": "hero",
                 "name": self.hero.name,
+                "gender": self.hero.gender,
                 "position": {"x": round(self.hero.x, 2), "y": round(self.hero.y, 2)},
                 "facing": "right",
-                "state": "combat" if self.active_monster else "walk",
+                "state": hero_state,
                 "hp": self.hero.hp,
                 "max_hp": self.hero.max_hp,
+                "reviving": self._revive_remaining > 0,
+                "revive_remaining": round(self._revive_remaining, 2),
+                "attack_range": round(self.hero.attack_range, 2),
+                "attack_speed": round(self.hero.attack_speed, 2),
+                "hp_regen": round(self.hero.hp_regen, 2),
+                "weapon": hero_weapon.to_dict() if hero_weapon is not None else None,
+                "equipped": hero_snapshot["equipped"],
+                "talents": hero_snapshot["talents"],
+                "talent_effects": hero_snapshot["talent_effects"],
             }
         ]
         if self.active_monster is not None:
@@ -287,24 +376,27 @@ class GameEngine:
                         "y": round(self.active_monster.y, 2),
                     },
                     "facing": "left",
-                    "state": "combat",
+                    "state": "waiting" if self._revive_remaining > 0 else "combat",
                     "hp": self.active_monster.hp,
                     "max_hp": self.active_monster.max_hp,
                     "role": self.active_monster.role,
                     "theme": self.active_monster.theme,
+                    "threat": round(self.active_monster.threat, 2),
+                    "level": self.active_monster.level,
                 }
             )
 
         return {
             "time": {"tick": self.tick, "seconds": round(self.time_seconds, 2)},
             "mode": self.mode,
-            "hero": self.hero.to_dict(),
+            "hero": hero_snapshot,
             "monster": self.active_monster.to_dict()
             if self.active_monster is not None
             else None,
             "scene": {
                 "biome": biome,
                 "mode": self.mode,
+                "forest_depth": self.forest_depth,
                 "camera": {"x": round(camera_x, 2), "y": 0},
                 "ground_y": HERO_GROUND_Y,
                 "next_encounter_x": round(self._next_encounter_x, 2),
@@ -312,6 +404,7 @@ class GameEngine:
                 "entities": entities,
             },
             "rift": self._rift_snapshot(),
+            "forest": self._forest_snapshot(),
             "treasure": self._treasure_snapshot(),
             "talent": self._talent_snapshot(),
             "market": self.market.to_dict(),
@@ -321,6 +414,10 @@ class GameEngine:
     def _advance_step(self, dt: float) -> None:
         self.time_seconds += dt
         self.tick += 1
+
+        if self._revive_remaining > 0:
+            self._advance_revive(dt)
+            return
 
         if self.active_monster is None:
             if self.mode == "rift" and self.active_rift is not None:
@@ -333,24 +430,30 @@ class GameEngine:
 
     def _advance_forest_travel(self, dt: float) -> None:
         self.hero.x += self.hero.move_speed * dt
-        self.hero.heal(max(1, int(dt * 2)))
+        self._heal_hero_over_time(self.hero.hp_regen, dt)
         if self.hero.x >= self._next_encounter_x:
             self._spawn_monster()
 
     def _advance_rift_travel(self, dt: float) -> None:
         self.hero.x += self.hero.move_speed * dt
-        self.hero.heal(max(1, int(dt)))
+        self._heal_hero_over_time(self.hero.hp_regen * 0.5, dt)
         if self.hero.x >= self._next_encounter_x:
             self._spawn_rift_monster()
 
     def _advance_combat(self, dt: float) -> None:
+        if self.hero.hp <= 0 or self._revive_remaining > 0:
+            return
         distance = self.active_monster.x - self.hero.x
-        if distance > MELEE_RANGE:
-            self.hero.x += min(distance - MELEE_RANGE, HERO_COMBAT_WALK_SPEED * dt)
+        attack_range = self.hero.attack_range
+        if distance > attack_range:
+            self.hero.x += min(distance - attack_range, self.hero.move_speed * dt)
+            distance = self.active_monster.x - self.hero.x
+        if distance > attack_range:
+            return
 
         self._hero_attack_timer += dt
         self._monster_attack_timer += dt
-        if self._hero_attack_timer >= HERO_ATTACK_INTERVAL:
+        if self._hero_attack_timer >= self.hero.attack_interval:
             self._hero_attack_timer = 0.0
             self._hero_attack()
 
@@ -359,24 +462,25 @@ class GameEngine:
             self._monster_attack()
 
     def _spawn_monster(self) -> None:
-        level = max(1, self.hero.level + int(self.hero.x / 450))
+        level = max(1, self.hero.level + int(self.hero.x / 450) + self._forest_level_bonus())
         mimic_chance = min(0.35, TREASURE_MIMIC_CHANCE + self.hero.treasure_mimic_chance_bonus)
         mimic = self.rng.random() < mimic_chance
         if mimic:
             self.active_monster = create_treasure_mimic(
                 level=level,
-                x=self.hero.x + MELEE_RANGE,
+                x=self.hero.x + MONSTER_APPROACH_DISTANCE,
                 y=HERO_GROUND_Y,
                 rng=self.rng,
             )
         else:
             self.active_monster = create_monster(
                 level=level,
-                x=self.hero.x + MELEE_RANGE,
+                x=self.hero.x + MONSTER_APPROACH_DISTANCE,
                 y=HERO_GROUND_Y,
                 rng=self.rng,
+                forest_depth=self.forest_depth,
             )
-        self._hero_attack_timer = HERO_ATTACK_INTERVAL * 0.55
+        self._hero_attack_timer = 0.0
         self._monster_attack_timer = 0.0
         if mimic:
             self._add_event(
@@ -405,12 +509,12 @@ class GameEngine:
         self.active_monster = create_rift_monster(
             floor=self.active_rift.floor,
             theme=self.active_rift.theme,
-            x=self.hero.x + MELEE_RANGE,
+            x=self.hero.x + MONSTER_APPROACH_DISTANCE,
             y=HERO_GROUND_Y,
             rng=self.rng,
             boss=boss,
         )
-        self._hero_attack_timer = HERO_ATTACK_INTERVAL * 0.5
+        self._hero_attack_timer = 0.0
         self._monster_attack_timer = 0.0
         event_kind = "rift_boss_spawn" if boss else "rift_monster_spawn"
         label = "Boss" if boss else "Monster"
@@ -617,6 +721,8 @@ class GameEngine:
                 event_kind,
                 f"Found {item.name}.",
                 item_id=item.id,
+                item_name=item.name,
+                item_appearance=item.appearance(),
                 rarity=item.rarity.value,
                 slot=item.slot.value,
                 special=item.special,
@@ -645,30 +751,34 @@ class GameEngine:
         self._return_to_forest(origin_x)
 
     def _hero_defeated(self) -> None:
-        if self.mode == "rift" and self.active_rift is not None:
-            floor = self.active_rift.floor
-            theme = self.active_rift.theme
-            origin_x = self.active_rift.origin_x
-            self._add_event(
-                "rift_failed",
-                f"Hero failed floor {floor} {theme} rift and retreated.",
-                floor=floor,
-                theme=theme,
-            )
-            self._return_to_forest(origin_x)
-            self.hero.hp = self.hero.max_hp
+        if self._revive_remaining > 0:
             return
 
         monster_id = self.active_monster.id if self.active_monster else None
+        self.hero.hp = 0
+        self._revive_remaining = HERO_REVIVE_SECONDS
+        self._hero_attack_timer = 0.0
+        self._monster_attack_timer = 0.0
         self._add_event(
             "hero_defeat",
-            "Hero was defeated and retreated.",
+            "Hero fell and is waiting to revive.",
+            monster_id=monster_id,
+            revive_seconds=HERO_REVIVE_SECONDS,
+        )
+
+    def _advance_revive(self, dt: float) -> None:
+        self._revive_remaining = max(0.0, self._revive_remaining - dt)
+        if self._revive_remaining > 0:
+            return
+        self.hero.hp = self.hero.max_hp
+        self._hero_attack_timer = 0.0
+        self._monster_attack_timer = 0.0
+        monster_id = self.active_monster.id if self.active_monster else None
+        self._add_event(
+            "hero_revive",
+            "Hero revived and rejoined the fight.",
             monster_id=monster_id,
         )
-        self.hero.x = max(0.0, self.hero.x - 80.0)
-        self.hero.hp = self.hero.max_hp
-        self.active_monster = None
-        self._next_encounter_x = self._roll_next_encounter_x(self.hero.x)
 
     def _return_to_forest(self, origin_x: float) -> None:
         self.mode = "forest"
@@ -678,15 +788,47 @@ class GameEngine:
         self.hero.y = HERO_GROUND_Y
         self._hero_attack_timer = 0.0
         self._monster_attack_timer = 0.0
+        self._revive_remaining = 0.0
         self._next_encounter_x = self._roll_next_encounter_x(self.hero.x)
 
+    def _heal_hero_over_time(self, rate: float, dt: float) -> None:
+        if self.hero.hp >= self.hero.max_hp or rate <= 0:
+            self._hero_heal_bank = 0.0
+            return
+        self._hero_heal_bank += rate * dt
+        amount = int(self._hero_heal_bank)
+        if amount <= 0:
+            return
+        self._hero_heal_bank -= amount
+        self.hero.heal(amount)
+
     def _roll_next_encounter_x(self, current_x: float) -> float:
-        return current_x + self.rng.uniform(ENCOUNTER_MIN_DISTANCE, ENCOUNTER_MAX_DISTANCE)
+        distance_scale = max(0.62, 1.0 - (self.forest_depth - 1) * 0.08)
+        return current_x + self.rng.uniform(
+            ENCOUNTER_MIN_DISTANCE * distance_scale,
+            ENCOUNTER_MAX_DISTANCE * distance_scale,
+        )
 
     def _ensure_scenery_until(self, target_x: float) -> None:
         while self._next_decoration_index * SCENE_CHUNK_WIDTH < target_x:
             x = self._next_decoration_index * SCENE_CHUNK_WIDTH
-            self.decorations.append(create_decoration(self._next_decoration_index, x, self.rng))
+            self.decorations.append(
+                create_decoration(
+                    self._next_decoration_index,
+                    x,
+                    self.rng,
+                    forest_depth=self.forest_depth,
+                )
+            )
+            if self.forest_depth > 1:
+                self.decorations.append(
+                    create_decoration(
+                        self._next_decoration_index + 10_000,
+                        x + SCENE_CHUNK_WIDTH * 0.48,
+                        self.rng,
+                        forest_depth=self.forest_depth,
+                    )
+                )
             self._next_decoration_index += 1
 
     def _ensure_rift_scenery_until(self, target_x: float) -> None:
@@ -711,6 +853,23 @@ class GameEngine:
             item.owner_id = seller_id
             price = max(18, item.score * 2 + index * 8)
             self.market.create_listing(item, seller_id, price, self.tick)
+
+    def _forest_level_bonus(self) -> int:
+        return max(0, (self.forest_depth - 1) * 3)
+
+    def _recommended_forest_power(self) -> int:
+        depth_bonus = max(0, self.forest_depth - 1)
+        return 135 + depth_bonus * 72 + self._forest_level_bonus() * 10
+
+    def _forest_snapshot(self) -> dict[str, Any]:
+        return {
+            "depth": self.forest_depth,
+            "biome": "deep_forest" if self.forest_depth > 1 else "forest",
+            "monster_level_bonus": self._forest_level_bonus(),
+            "threat": round(1.0 + max(0, self.forest_depth - 1) * 0.32, 2),
+            "recommended_power": self._recommended_forest_power(),
+            "hero_power": self._hero_power(),
+        }
 
     def _rift_snapshot(self) -> dict[str, Any]:
         recommended_power = self._recommended_rift_power(self.unlocked_rift_floor)

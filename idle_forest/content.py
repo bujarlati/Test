@@ -17,6 +17,14 @@ MONSTER_KINDS = (
     "bark_guard",
 )
 
+DEEP_FOREST_MONSTER_KINDS = (
+    "shadow_slime",
+    "bramble_wolf",
+    "gloom_imp",
+    "venom_mushroom",
+    "ancient_bark_guard",
+)
+
 RIFT_THEMES = ("cave", "sky", "castle")
 
 RIFT_MONSTERS: dict[str, tuple[str, ...]] = {
@@ -115,12 +123,20 @@ def roll_special_rarity(rng: random.Random) -> Rarity:
     return Rarity.WHITE
 
 
-def create_monster(level: int, x: float, y: float, rng: random.Random) -> Monster:
-    kind = rng.choice(MONSTER_KINDS)
-    scale = 1 + level * 0.18
+def create_monster(
+    level: int,
+    x: float,
+    y: float,
+    rng: random.Random,
+    forest_depth: int = 1,
+) -> Monster:
+    deep = forest_depth > 1
+    kind = rng.choice(DEEP_FOREST_MONSTER_KINDS if deep else MONSTER_KINDS)
+    threat = 1.0 + max(0, forest_depth - 1) * 0.32
+    scale = (1 + level * 0.18) * threat
     hp = int(rng.randint(26, 38) * scale)
     attack = int(rng.randint(4, 7) * scale)
-    defense = int(rng.randint(0, 3) + level * 0.35)
+    defense = int((rng.randint(0, 3) + level * 0.35) * threat)
     return Monster(
         id=f"monster_{uuid4().hex[:10]}",
         kind=kind,
@@ -129,11 +145,12 @@ def create_monster(level: int, x: float, y: float, rng: random.Random) -> Monste
         hp=hp,
         attack=attack,
         defense=defense,
-        exp_reward=12 + level * 6,
-        gold_reward=rng.randint(4, 8) + level * 2,
+        exp_reward=int((12 + level * 6) * threat),
+        gold_reward=int((rng.randint(4, 8) + level * 2) * threat),
         x=x,
         y=y,
-        theme="forest",
+        theme="deep_forest" if deep else "forest",
+        threat=threat,
     )
 
 
@@ -204,6 +221,22 @@ def create_rift_monster(
     )
 
 
+def create_starter_weapon(owner_id: str) -> Equipment:
+    return Equipment(
+        id=f"starter_wooden_sword_{owner_id}",
+        name="Starter Wooden Sword",
+        slot=EquipmentSlot.WEAPON,
+        rarity=Rarity.WHITE,
+        level=1,
+        attack=6,
+        attack_speed=0.05,
+        attack_range=4.0,
+        weapon_type="blade",
+        owner_id=owner_id,
+        tradable=False,
+    )
+
+
 def generate_equipment(level: int, rng: random.Random) -> Equipment:
     rarity = roll_rarity(rng)
     config = RARITY_CONFIG[rarity]
@@ -213,8 +246,13 @@ def generate_equipment(level: int, rng: random.Random) -> Equipment:
     base = max(1, item_level)
 
     attack = defense = max_hp = 0
+    attack_speed = hp_regen = attack_range = 0.0
+    weapon_type = None
     if slot == EquipmentSlot.WEAPON:
         attack = int((5 + base * 2) * multiplier)
+        weapon_type = rng.choice(("axe", "blade", "spear"))
+        attack_range = {"axe": 8.0, "blade": 4.0, "spear": 18.0}[weapon_type]
+        attack_speed = {"axe": -0.05, "blade": 0.08, "spear": -0.02}[weapon_type]
     elif slot == EquipmentSlot.HELMET:
         defense = int((2 + base) * multiplier)
         max_hp = int((5 + base * 2) * multiplier)
@@ -224,9 +262,11 @@ def generate_equipment(level: int, rng: random.Random) -> Equipment:
     elif slot == EquipmentSlot.BOOTS:
         defense = int((1 + base) * multiplier)
         max_hp = int((3 + base) * multiplier)
+        hp_regen = round(0.15 * multiplier, 2)
     elif slot == EquipmentSlot.RING:
         attack = int((1 + base) * multiplier)
         max_hp = int((6 + base * 2) * multiplier)
+        attack_speed = round(0.03 * multiplier, 2)
 
     prefix = rng.choice(RARITY_NAME_PREFIX[rarity])
     noun = rng.choice(SLOT_NAME_PARTS[slot])
@@ -239,6 +279,10 @@ def generate_equipment(level: int, rng: random.Random) -> Equipment:
         attack=attack,
         defense=defense,
         max_hp=max_hp,
+        attack_speed=attack_speed,
+        hp_regen=hp_regen,
+        attack_range=attack_range,
+        weapon_type=weapon_type,
         tradable=True,
     )
 
@@ -257,8 +301,13 @@ def generate_special_set_equipment(
     base = max(1, item_level)
 
     attack = defense = max_hp = 0
+    attack_speed = hp_regen = attack_range = 0.0
+    weapon_type = None
     if slot == EquipmentSlot.WEAPON:
         attack = int((7 + base * 2.4) * multiplier)
+        weapon_type = rng.choice(("axe", "blade", "spear"))
+        attack_range = {"axe": 10.0, "blade": 6.0, "spear": 22.0}[weapon_type]
+        attack_speed = {"axe": -0.04, "blade": 0.1, "spear": 0.0}[weapon_type]
     elif slot == EquipmentSlot.HELMET:
         defense = int((3 + base * 1.2) * multiplier)
         max_hp = int((7 + base * 2.4) * multiplier)
@@ -268,9 +317,11 @@ def generate_special_set_equipment(
     elif slot == EquipmentSlot.BOOTS:
         defense = int((2 + base * 1.1) * multiplier)
         max_hp = int((6 + base * 1.8) * multiplier)
+        hp_regen = round(0.2 * multiplier, 2)
     elif slot == EquipmentSlot.RING:
         attack = int((2 + base * 1.35) * multiplier)
         max_hp = int((10 + base * 2.4) * multiplier)
+        attack_speed = round(0.04 * multiplier, 2)
 
     bonus_multiplier = config.power_multiplier
     set_bonus = {
@@ -290,6 +341,10 @@ def generate_special_set_equipment(
         attack=attack,
         defense=defense,
         max_hp=max_hp,
+        attack_speed=attack_speed,
+        hp_regen=hp_regen,
+        attack_range=attack_range,
+        weapon_type=weapon_type,
         tradable=True,
         special=True,
         set_id=set_def["id"],
@@ -310,16 +365,36 @@ def maybe_drop_equipment(
     return generate_equipment(level, rng)
 
 
-def create_decoration(index: int, x: float, rng: random.Random) -> dict[str, object]:
-    kind = rng.choice(("pine", "oak", "fern", "stump", "mushroom_cluster"))
-    layer = "back" if kind in {"pine", "oak"} and rng.random() < 0.65 else "front"
+def create_decoration(
+    index: int,
+    x: float,
+    rng: random.Random,
+    forest_depth: int = 1,
+) -> dict[str, object]:
+    if forest_depth > 1:
+        kind = rng.choice((
+            "pine",
+            "pine",
+            "oak",
+            "dark_pine",
+            "bramble",
+            "shadow_fern",
+            "mushroom_cluster",
+        ))
+        layer = "back" if kind in {"pine", "oak", "dark_pine"} and rng.random() < 0.78 else "front"
+        scale_min, scale_max = 0.95, 1.65
+    else:
+        kind = rng.choice(("pine", "oak", "fern", "stump", "mushroom_cluster"))
+        layer = "back" if kind in {"pine", "oak"} and rng.random() < 0.65 else "front"
+        scale_min, scale_max = 0.75, 1.35
     return {
         "id": f"decor_{index}",
         "kind": kind,
         "layer": layer,
         "x": round(x + rng.uniform(-18, 18), 2),
         "y": 224 if layer == "front" else 210,
-        "scale": round(rng.uniform(0.75, 1.35), 2),
+        "scale": round(rng.uniform(scale_min, scale_max), 2),
+        "forest_depth": forest_depth,
     }
 
 

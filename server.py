@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import random
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -16,11 +17,149 @@ from typing import Any
 from urllib.parse import urlparse
 
 from idle_forest import GameEngine
-from idle_forest.talents import TALENT_CATALOG, TALENT_TIER_CONFIG
+from idle_forest.models import Talent
+from idle_forest.talents import TALENT_CATALOG, TALENT_TIER_CONFIG, roll_starting_talents
 
 
-ENGINE = GameEngine(seed=11)
 WEB_ROOT = Path(__file__).with_name("web")
+
+
+def _safe_print(message: str) -> None:
+    try:
+        print(message)
+    except (AttributeError, OSError):
+        pass
+
+
+def _talent_by_id() -> dict[str, Talent]:
+    return {
+        talent.id: talent
+        for talents in TALENT_CATALOG.values()
+        for talent in talents
+    }
+
+
+class ProfileSession:
+    """In-memory profile draft for the local prototype."""
+
+    def __init__(self, seed: int | None = None) -> None:
+        self.rng = random.Random(seed)
+        self.draft: dict[str, Any] | None = None
+        self.confirmed: dict[str, Any] | None = None
+
+    def roll(self, name: str, gender: str) -> dict[str, Any]:
+        clean_name = self._clean_name(name)
+        clean_gender = self._clean_gender(gender)
+        if (
+            self.draft is None
+            or self.draft["name"] != clean_name
+            or self.draft["gender"] != clean_gender
+        ):
+            self.draft = {
+                "name": clean_name,
+                "gender": clean_gender,
+                "rolls_used": 0,
+                "talents": [],
+            }
+        if int(self.draft["rolls_used"]) >= 3:
+            raise ValueError("no talent rolls remaining")
+
+        talents = roll_starting_talents(self.rng, 3)
+        self.draft["rolls_used"] = int(self.draft["rolls_used"]) + 1
+        self.draft["talents"] = [talent.to_dict() for talent in talents]
+        return self._draft_response()
+
+    def confirm(
+        self,
+        name: str | None = None,
+        gender: str | None = None,
+        talent_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        if talent_ids is None:
+            if self.draft is None or not self.draft.get("talents"):
+                raise ValueError("roll talents before confirming")
+            talent_ids = [str(talent["id"]) for talent in self.draft["talents"]]
+        talents = self.talents_from_ids(talent_ids)
+        if len(talents) != 3:
+            raise ValueError("character requires exactly three talents")
+
+        clean_name = self._clean_name(name or (self.draft or {}).get("name", ""))
+        clean_gender = self._clean_gender(gender or (self.draft or {}).get("gender", "male"))
+        self.confirmed = {
+            "name": clean_name,
+            "gender": clean_gender,
+            "talents": [talent.to_dict() for talent in talents],
+        }
+        return self.confirmed
+
+    def clear(self) -> None:
+        self.draft = None
+        self.confirmed = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "confirmed": self.confirmed is not None,
+            "character": self.confirmed,
+            "draft": self._draft_response() if self.draft is not None else None,
+        }
+
+    def talents_from_ids(self, talent_ids: list[str]) -> list[Talent]:
+        lookup = _talent_by_id()
+        talents: list[Talent] = []
+        seen: set[str] = set()
+        for talent_id in talent_ids:
+            if talent_id in seen:
+                raise ValueError("duplicate talent selected")
+            seen.add(talent_id)
+            try:
+                talents.append(lookup[talent_id])
+            except KeyError as exc:
+                raise ValueError(f"unknown talent: {talent_id}") from exc
+        return talents
+
+    def _draft_response(self) -> dict[str, Any]:
+        if self.draft is None:
+            raise ValueError("no active draft")
+        rolls_used = int(self.draft["rolls_used"])
+        return {
+            "name": self.draft["name"],
+            "gender": self.draft["gender"],
+            "rolls_used": rolls_used,
+            "rolls_remaining": max(0, 3 - rolls_used),
+            "talents": self.draft["talents"],
+        }
+
+    def _clean_name(self, name: str) -> str:
+        clean = str(name).strip()
+        if not clean:
+            raise ValueError("character name is required")
+        if len(clean) > 24:
+            raise ValueError("character name is too long")
+        return clean
+
+    def _clean_gender(self, gender: str) -> str:
+        clean = str(gender).strip().lower()
+        if clean not in {"male", "female"}:
+            raise ValueError("gender must be male or female")
+        return clean
+
+
+PROFILE = ProfileSession(seed=11)
+
+
+def _engine_from_profile() -> GameEngine:
+    if PROFILE.confirmed is None:
+        return GameEngine(seed=11)
+    talent_ids = [str(talent["id"]) for talent in PROFILE.confirmed["talents"]]
+    return GameEngine(
+        seed=11,
+        hero_name=str(PROFILE.confirmed["name"]),
+        hero_gender=str(PROFILE.confirmed["gender"]),
+        starting_talents=PROFILE.talents_from_ids(talent_ids),
+    )
+
+
+ENGINE = _engine_from_profile()
 
 
 class IdleForestHandler(BaseHTTPRequestHandler):
@@ -36,6 +175,9 @@ class IdleForestHandler(BaseHTTPRequestHandler):
             return
         if path == "/snapshot":
             self._send_json(ENGINE.snapshot())
+            return
+        if path == "/profile":
+            self._send_json(PROFILE.to_dict())
             return
         if path == "/market":
             self._send_json(ENGINE.market.to_dict())
@@ -63,8 +205,31 @@ class IdleForestHandler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
             if path == "/reset":
-                ENGINE = GameEngine(seed=11)
+                ENGINE = _engine_from_profile()
                 self._send_json(ENGINE.snapshot())
+                return
+            if path == "/profile/roll":
+                self._send_json(PROFILE.roll(
+                    name=str(payload.get("name", "")),
+                    gender=str(payload.get("gender", "")),
+                ))
+                return
+            if path == "/profile/confirm":
+                talent_ids = payload.get("talent_ids")
+                if talent_ids is not None and not isinstance(talent_ids, list):
+                    raise ValueError("talent_ids must be a list")
+                PROFILE.confirm(
+                    name=str(payload.get("name", "")) if "name" in payload else None,
+                    gender=str(payload.get("gender", "")) if "gender" in payload else None,
+                    talent_ids=[str(talent_id) for talent_id in talent_ids] if talent_ids is not None else None,
+                )
+                ENGINE = _engine_from_profile()
+                self._send_json({"profile": PROFILE.to_dict(), "snapshot": ENGINE.snapshot()})
+                return
+            if path == "/profile/clear":
+                PROFILE.clear()
+                ENGINE = _engine_from_profile()
+                self._send_json({"profile": PROFILE.to_dict(), "snapshot": ENGINE.snapshot()})
                 return
             if path == "/tick":
                 seconds = float(payload.get("seconds", 1))
@@ -78,6 +243,12 @@ class IdleForestHandler(BaseHTTPRequestHandler):
             if path == "/rift/leave":
                 ENGINE.leave_rift()
                 self._send_json(ENGINE.snapshot())
+                return
+            if path == "/forest/deepen":
+                self._send_json(ENGINE.deepen_forest())
+                return
+            if path == "/forest/retreat":
+                self._send_json(ENGINE.retreat_forest())
                 return
             if path == "/equip-best":
                 equipped = ENGINE.equip_best_items()
@@ -183,12 +354,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     server = ThreadingHTTPServer((args.host, args.port), IdleForestHandler)
-    print(f"Idle Forest running at http://{args.host}:{args.port}")
-    print("Open / for the web prototype, or call GET /snapshot and POST /tick.")
+    _safe_print(f"Idle Forest running at http://{args.host}:{args.port}")
+    _safe_print("Open / for the web prototype, or call GET /snapshot and POST /tick.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopping server.")
+        _safe_print("\nStopping server.")
     finally:
         server.server_close()
 

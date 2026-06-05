@@ -1,0 +1,147 @@
+<view class="page">
+  <view class="topbar">
+    <view class="brand">
+      <text class="title">林地挂机</text>
+      <text class="status {{isOnline ? 'online' : 'offline'}}">{{statusText}}</text>
+    </view>
+    <view class="currency">{{hero.gold || 0}} 金</view>
+  </view>
+
+  <view class="stats">
+    <view class="stat">
+      <text class="label">等级</text>
+      <text class="value">{{hero.level || 1}}</text>
+    </view>
+    <view class="stat wide">
+      <text class="label">生命</text>
+      <text class="value">{{hero.hp || 0}} / {{hero.max_hp || 0}}</text>
+    </view>
+    <view class="stat">
+      <text class="label">攻击</text>
+      <text class="value">{{hero.attack || 0}}</text>
+    </view>
+    <view class="stat">
+      <text class="label">防御</text>
+      <text class="value">{{hero.defense || 0}}</text>
+    </view>
+  </view>
+
+  <view class="canvas-shell">
+    <canvas type="2d" id="gameCanvas" class="game-canvas"></canvas>
+  </view>
+
+  <view class="actions">
+    <button class="action" size="mini" loading="{{isTicking}}" bindtap="tickNow">推进</button>
+    <button class="action" size="mini" loading="{{isEquipping}}" bindtap="equipBest">自动装备</button>
+    <button class="action ghost" size="mini" loading="{{isLoading}}" bindtap="refreshSnapshot">刷新</button>
+  </view>
+
+  <view class="panels">
+    <view class="panel inventory">
+      <view class="panel-title">背包</view>
+      <scroll-view scroll-y class="list">
+        <block wx:if="{{inventory.length}}">
+          <view wx:for="{{inventory}}" wx:key="id" class="item rarity-{{item.rarity}}" data-id="{{item.id}}" bindtap="openItemDetail">
+            <view class="item-main">
+              <text class="item-name">{{item.name}}</text>
+              <text class="item-score">评分 {{item.score}}</text>
+            </view>
+            <view class="item-sub">{{item.slotLabel}} · {{item.rarityLabel}} · Lv.{{item.level}}</view>
+          </view>
+        </block>
+        <view wx:else class="empty">暂无装备</view>
+      </scroll-view>
+    </view>
+
+    <view class="panel equipped">
+      <view class="panel-title">已装备</view>
+      <scroll-view scroll-y class="list">
+        <block wx:if="{{equippedList.length}}">
+          <view wx:for="{{equippedList}}" wx:key="id" class="item rarity-{{item.rarity}}" data-id="{{item.id}}" bindtap="openEquippedDetail">
+            <view class="item-main">
+              <text class="item-name">{{item.slotLabel}}</text>
+              <text class="item-score">{{item.score}}</text>
+            </view>
+            <view class="item-sub">{{item.name}}</view>
+          </view>
+        </block>
+        <view wx:else class="empty">暂无穿戴</view>
+      </scroll-view>
+    </view>
+
+    <view class="panel market">
+      <view class="panel-title">交易市场</view>
+      <scroll-view scroll-y class="list">
+        <block wx:if="{{marketListings.length}}">
+          <view wx:for="{{marketListings}}" wx:key="id" class="item listing rarity-{{item.item.rarity}}" data-id="{{item.id}}" bindtap="openListingDetail">
+            <view class="item-main">
+              <text class="item-name">{{item.item.name}}</text>
+              <text class="price">{{item.price}} 金</text>
+            </view>
+            <view class="item-sub">{{item.sellerLabel}} · {{item.item.slotLabel}} · 评分 {{item.item.score}}</view>
+          </view>
+        </block>
+        <view wx:else class="empty">暂无挂单</view>
+      </scroll-view>
+    </view>
+
+    <view class="panel events">
+      <view class="panel-title">战斗</view>
+      <scroll-view scroll-y class="list" scroll-top="{{eventScrollTop}}">
+        <view wx:for="{{recentEvents}}" wx:key="tick" class="event {{item.kind}}">
+          <text>{{item.message}}</text>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <view wx:if="{{detailVisible}}" class="modal" bindtap="closeDetail">
+    <view class="modal-card rarity-{{detailItem.rarity}}" catchtap="noop">
+      <view class="modal-head">
+        <view class="modal-title-wrap">
+          <text class="modal-title">{{detailItem.name}}</text>
+          <text class="modal-sub">{{detailItem.slotLabel}} · {{detailItem.rarityLabel}} · Lv.{{detailItem.level}}</text>
+        </view>
+        <button class="icon-button" size="mini" bindtap="closeDetail">×</button>
+      </view>
+
+      <view class="detail-grid">
+        <view class="detail-stat">
+          <text class="label">评分</text>
+          <text class="value">{{detailItem.score}}</text>
+        </view>
+        <view class="detail-stat">
+          <text class="label">攻击</text>
+          <text class="value">{{detailItem.attack}}</text>
+        </view>
+        <view class="detail-stat">
+          <text class="label">防御</text>
+          <text class="value">{{detailItem.defense}}</text>
+        </view>
+        <view class="detail-stat">
+          <text class="label">生命</text>
+          <text class="value">{{detailItem.max_hp}}</text>
+        </view>
+      </view>
+
+      <view wx:if="{{detailIsInventoryItem}}" class="modal-actions">
+        <button class="modal-action" loading="{{isEquipping}}" bindtap="equipSelected">穿戴</button>
+        <view class="price-row">
+          <input class="price-input" type="number" value="{{listingPrice}}" bindinput="onPriceInput" />
+          <button class="modal-action secondary" loading="{{isListing}}" bindtap="listSelected">挂售</button>
+        </view>
+      </view>
+
+      <view wx:elif="{{detailIsListingMode}}" class="modal-actions">
+        <view class="listing-info">
+          <text>卖家：{{detailListing.sellerLabel}}</text>
+          <text>价格：{{detailListing.price}} 金</text>
+        </view>
+        <button wx:if="{{!detailIsOwnListing}}" class="modal-action" loading="{{isBuying}}" bindtap="buySelectedListing">购买</button>
+        <view wx:else class="hint">这是你的挂单</view>
+      </view>
+
+      <view wx:else class="hint">已穿戴装备不能直接挂售，先换下后再交易。</view>
+    </view>
+  </view>
+</view>

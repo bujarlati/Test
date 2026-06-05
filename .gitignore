@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+
+server.out.log
+server.err.log
+
+web/assets/visual-check.png
+web/assets/source/kenney_new-platformer-pack/
+
+.DS_Store
+Thumbs.db

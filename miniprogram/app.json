@@ -1,0 +1,12 @@
+{
+  "pages": [
+    "pages/index/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "林地挂机",
+    "navigationBarBackgroundColor": "#173f2a",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#10251c"
+  },
+  "sitemapLocation": "sitemap.json"
+}

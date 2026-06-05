@@ -1,0 +1,19 @@
+{
+  "description": "Idle Forest WeChat mini program prototype",
+  "appid": "touristappid",
+  "projectname": "IdleForest",
+  "miniprogramRoot": "miniprogram/",
+  "compileType": "miniprogram",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": false,
+    "compileHotReLoad": true
+  },
+  "packOptions": {
+    "ignore": []
+  },
+  "condition": {}
+}

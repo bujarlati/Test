@@ -1,0 +1,6 @@
+[project]
+name = "idle-forest"
+version = "0.1.0"
+description = "A Python idle 2D forest combat prototype prepared for mini-program clients."
+requires-python = ">=3.11"
+dependencies = []

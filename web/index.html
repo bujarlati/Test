@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Idle Forest</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <h1>林地挂机</h1>
+          <p id="statusText">连接中</p>
+        </div>
+        <div class="resource">
+          <span id="goldText">0</span>
+          <small>金币</small>
+        </div>
+      </header>
+
+      <section class="hero-strip">
+        <div class="stat"><span>等级</span><strong id="levelText">1</strong></div>
+        <div class="stat wide"><span>生命</span><strong id="hpText">0 / 0</strong></div>
+        <div class="stat"><span>攻击</span><strong id="attackText">0</strong></div>
+        <div class="stat"><span>防御</span><strong id="defenseText">0</strong></div>
+        <div class="stat"><span>战力</span><strong id="powerText">0</strong></div>
+      </section>
+
+      <section class="stage">
+        <canvas id="gameCanvas" width="960" height="520"></canvas>
+        <div class="stage-hud">
+          <div>
+            <span id="modeText">森林</span>
+            <strong id="riftStateText">普通挂机</strong>
+          </div>
+          <button id="enterRiftButton">进入秘境</button>
+          <button id="leaveRiftButton" class="muted" disabled>离开秘境</button>
+        </div>
+      </section>
+
+      <section class="controls">
+        <button id="tickButton">推进 10 秒</button>
+        <button id="equipBestButton">自动装备</button>
+        <button id="resetButton" class="muted">重置</button>
+      </section>
+
+      <section class="dashboard">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>秘境</h2>
+            <span id="riftThemeText">未进入</span>
+          </div>
+          <div class="rift-meter">
+            <div id="riftProgressBar"></div>
+          </div>
+          <dl class="facts">
+            <div><dt>可挑战层</dt><dd id="unlockedFloorText">1</dd></div>
+            <div><dt>推荐战力</dt><dd id="recommendedPowerText">0</dd></div>
+            <div><dt>小怪进度</dt><dd id="minionProgressText">0 / 0</dd></div>
+          </dl>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>宝箱怪</h2>
+            <span id="mimicPityText">0 / 8</span>
+          </div>
+          <div class="rift-meter luck-meter">
+            <div id="mimicPityBar"></div>
+          </div>
+          <dl class="facts">
+            <div><dt>遭遇率</dt><dd id="mimicChanceText">0%</dd></div>
+            <div><dt>红装保底</dt><dd id="pityRemainingText">8</dd></div>
+            <div><dt>掉落</dt><dd>特殊套装</dd></div>
+          </dl>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>天赋</h2>
+            <span id="talentScrollText">卷轴 0</span>
+          </div>
+          <div id="talentList" class="talent-list"></div>
+          <div id="talentCatalogText" class="catalog-note">目录 0 个</div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>已装备</h2>
+          </div>
+          <div id="equippedList" class="item-list compact"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>背包</h2>
+          </div>
+          <div id="inventoryList" class="item-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>交易市场</h2>
+          </div>
+          <div id="marketList" class="item-list"></div>
+        </section>
+
+        <section class="panel events-panel">
+          <div class="panel-head">
+            <h2>事件</h2>
+          </div>
+          <div id="eventList" class="event-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/web/app.js"></script>
+  </body>
+</html>

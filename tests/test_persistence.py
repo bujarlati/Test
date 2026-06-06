@@ -156,6 +156,92 @@ class PersistenceTests(unittest.TestCase):
             self.assertIsNone(loaded)
             self.assertFalse(db_path.exists())
 
+    def test_account_characters_are_limited_to_three_and_delete_releases_slot(self) -> None:
+        talents = TALENT_CATALOG[TalentTier.COMMON][:3]
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "idle_forest.db"
+            store = SQLiteSaveStore(db_path)
+            account = store.create_account("runner", "forest-pass")
+
+            created = []
+            for index in range(3):
+                engine = GameEngine(
+                    seed=60 + index,
+                    hero_id=f"runner_{index}",
+                    hero_name=f"Runner {index}",
+                    hero_gender="female" if index == 1 else "male",
+                    starting_talents=talents,
+                )
+                created.append(
+                    store.create_character(
+                        account_id=account["account_id"],
+                        profile=self._profile(engine.hero.name, engine.hero.gender, talents),
+                        engine=engine,
+                    )
+                )
+
+            with self.assertRaises(ValueError):
+                store.create_character(
+                    account_id=account["account_id"],
+                    profile=self._profile("Fourth", "male", talents),
+                    engine=GameEngine(
+                        seed=63,
+                        hero_id="runner_3",
+                        hero_name="Fourth",
+                        starting_talents=talents,
+                    ),
+                )
+
+            store.delete_character(account["account_id"], created[1]["character_id"])
+            replacement = store.create_character(
+                account_id=account["account_id"],
+                profile=self._profile("Replacement", "female", talents),
+                engine=GameEngine(
+                    seed=64,
+                    hero_id="runner_replacement",
+                    hero_name="Replacement",
+                    hero_gender="female",
+                    starting_talents=talents,
+                ),
+            )
+            characters = store.list_characters(account["account_id"])
+
+        self.assertEqual([character["slot_index"] for character in created], [0, 1, 2])
+        self.assertEqual(replacement["slot_index"], 1)
+        self.assertEqual(len(characters), 3)
+        self.assertNotIn(created[1]["character_id"], [character["character_id"] for character in characters])
+
+    def test_account_login_and_character_load_use_session_token(self) -> None:
+        talents = TALENT_CATALOG[TalentTier.COMMON][:3]
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "idle_forest.db"
+            store = SQLiteSaveStore(db_path)
+            account = store.create_account("astra", "blade-pass")
+            engine = GameEngine(
+                seed=65,
+                hero_id="astra_main",
+                hero_name="Astra",
+                hero_gender="female",
+                starting_talents=talents,
+                starter_gold=777,
+            )
+            character = store.create_character(
+                account_id=account["account_id"],
+                profile=self._profile("Astra", "female", talents),
+                engine=engine,
+            )
+
+            session = store.login_account("astra", "blade-pass")
+            store.set_active_character(session["session_token"], character["character_id"])
+            resolved = store.resolve_session(session["session_token"])
+            loaded = store.load_character(character["character_id"])
+
+        self.assertEqual(resolved["account_id"], account["account_id"])
+        self.assertEqual(resolved["active_character_id"], character["character_id"])
+        self.assertEqual(loaded["engine"].hero.name, "Astra")
+        self.assertEqual(loaded["engine"].hero.gold, 777)
+        self.assertEqual(loaded["profile"]["confirmed"]["gender"], "female")
+
     def _profile(self, name: str, gender: str, talents: list) -> dict:
         return {
             "confirmed": {

@@ -17,27 +17,57 @@
           </div>
         </div>
         <div class="profile-form">
-          <label class="field">
-            <span>名字</span>
-            <input id="characterNameInput" maxlength="24" placeholder="输入角色名" autocomplete="off" />
-          </label>
-          <div class="field">
-            <span>性别</span>
-            <div class="segmented">
-              <button id="genderMaleButton" class="active" type="button" data-gender="male">男</button>
-              <button id="genderFemaleButton" type="button" data-gender="female">女</button>
+          <div id="accountPanel" class="account-panel">
+            <label class="field">
+              <span>账号</span>
+              <input id="accountUsernameInput" maxlength="32" placeholder="输入账号" autocomplete="username" />
+            </label>
+            <label class="field">
+              <span>密码</span>
+              <input id="accountPasswordInput" type="password" maxlength="64" placeholder="输入密码" autocomplete="current-password" />
+            </label>
+            <div class="profile-actions">
+              <button id="loginButton" type="button">登录</button>
+              <button id="registerButton" class="muted" type="button">创建账号</button>
             </div>
+            <p id="accountStatusText" class="profile-status"></p>
           </div>
-          <div class="roll-head">
-            <strong>初始天赋</strong>
-            <span id="rollCountText">剩余 3 次</span>
+
+          <div id="characterPanel" class="character-panel hidden">
+            <div class="character-head">
+              <div>
+                <span>当前账号</span>
+                <strong id="accountNameText">-</strong>
+              </div>
+              <button id="logoutButton" class="muted" type="button">退出</button>
+            </div>
+            <div id="characterSlotList" class="character-slots"></div>
           </div>
-          <div id="creationTalentList" class="creation-talents"></div>
-          <div class="profile-actions">
-            <button id="rollTalentButton" type="button">Roll 天赋</button>
-            <button id="confirmCharacterButton" class="muted" type="button" disabled>确认角色</button>
+
+          <div id="creationPanel" class="creation-panel hidden">
+            <label class="field">
+              <span>名字</span>
+              <input id="characterNameInput" maxlength="24" placeholder="输入角色名" autocomplete="off" />
+            </label>
+            <div class="field">
+              <span>性别</span>
+              <div class="segmented">
+                <button id="genderMaleButton" class="active" type="button" data-gender="male">男</button>
+                <button id="genderFemaleButton" type="button" data-gender="female">女</button>
+              </div>
+            </div>
+            <div class="roll-head">
+              <strong>初始天赋</strong>
+              <span id="rollCountText">剩余 3 次</span>
+            </div>
+            <div id="creationTalentList" class="creation-talents"></div>
+            <div class="profile-actions">
+              <button id="rollTalentButton" type="button">Roll 天赋</button>
+              <button id="confirmCharacterButton" class="muted" type="button" disabled>确认角色</button>
+              <button id="cancelCreationButton" class="muted" type="button">取消</button>
+            </div>
+            <p id="profileStatusText" class="profile-status"></p>
           </div>
-          <p id="profileStatusText" class="profile-status"></p>
         </div>
       </div>
     </section>

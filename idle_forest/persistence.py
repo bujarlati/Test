@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from collections import deque
 from contextlib import closing
+import hashlib
+import hmac
 import json
 from pathlib import Path
+import secrets
 import sqlite3
 from typing import Any
+import uuid
 
 from .engine import GameEngine
 from .market import Market, MarketListing
@@ -15,6 +19,8 @@ from .models import Equipment, EquipmentSlot, Event, Hero, Monster, Rarity, Rift
 
 
 SAVE_VERSION = 1
+MAX_CHARACTERS_PER_ACCOUNT = 3
+PASSWORD_HASH_ITERATIONS = 160_000
 
 
 def engine_to_save(engine: GameEngine) -> dict[str, Any]:
@@ -363,6 +369,239 @@ class SQLiteSaveStore:
         if self.legacy_store is not None:
             self.legacy_store.delete()
 
+    def create_account(self, username: str, password: str) -> dict[str, Any]:
+        clean_username = _clean_username(username)
+        salt = secrets.token_hex(16)
+        account_id = f"acct_{uuid.uuid4().hex}"
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO accounts (
+                        account_id, username, password_salt, password_hash, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """,
+                    (
+                        account_id,
+                        clean_username,
+                        salt,
+                        _hash_password(password, salt),
+                    ),
+                )
+                connection.commit()
+            except sqlite3.IntegrityError as exc:
+                raise ValueError("username already exists") from exc
+        return {"account_id": account_id, "username": clean_username}
+
+    def login_account(self, username: str, password: str) -> dict[str, Any]:
+        clean_username = _clean_username(username)
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            account = connection.execute(
+                """
+                SELECT account_id, username, password_salt, password_hash
+                FROM accounts
+                WHERE username = ?
+                """,
+                (clean_username,),
+            ).fetchone()
+            if account is None or not _verify_password(
+                password,
+                str(account["password_salt"]),
+                str(account["password_hash"]),
+            ):
+                raise ValueError("invalid username or password")
+
+            token = secrets.token_urlsafe(32)
+            active_character_id = self._first_active_character_id(connection, str(account["account_id"]))
+            connection.execute(
+                """
+                INSERT INTO sessions (
+                    token, account_id, active_character_id, created_at, last_seen_at
+                )
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                (token, str(account["account_id"]), active_character_id),
+            )
+            connection.commit()
+
+        return {
+            "session_token": token,
+            "account": {
+                "account_id": str(account["account_id"]),
+                "username": str(account["username"]),
+            },
+            "characters": self.list_characters(str(account["account_id"])),
+            "active_character_id": active_character_id,
+        }
+
+    def resolve_session(self, token: str) -> dict[str, Any]:
+        clean_token = str(token or "").strip()
+        if not clean_token:
+            raise ValueError("login required")
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            row = connection.execute(
+                """
+                SELECT
+                    sessions.token,
+                    sessions.account_id,
+                    sessions.active_character_id,
+                    accounts.username
+                FROM sessions
+                JOIN accounts ON accounts.account_id = sessions.account_id
+                WHERE sessions.token = ?
+                """,
+                (clean_token,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("login required")
+            connection.execute(
+                "UPDATE sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE token = ?",
+                (clean_token,),
+            )
+            connection.commit()
+            return {
+                "session_token": clean_token,
+                "account_id": str(row["account_id"]),
+                "username": str(row["username"]),
+                "active_character_id": row["active_character_id"],
+            }
+
+    def set_active_character(self, token: str, character_id: str) -> dict[str, Any]:
+        session = self.resolve_session(token)
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            character = self._character_row(connection, session["account_id"], character_id)
+            if character is None:
+                raise ValueError("character not found")
+            connection.execute(
+                """
+                UPDATE sessions
+                SET active_character_id = ?, last_seen_at = CURRENT_TIMESTAMP
+                WHERE token = ?
+                """,
+                (character_id, session["session_token"]),
+            )
+            connection.commit()
+        return self.resolve_session(token)
+
+    def create_character(
+        self,
+        account_id: str,
+        profile: dict[str, Any],
+        engine: GameEngine,
+    ) -> dict[str, Any]:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        character_id = str(engine.hero.id)
+        if not character_id:
+            raise ValueError("character id is required")
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            self._require_account(connection, account_id)
+            slot_index = self._next_character_slot(connection, account_id)
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO character_slots (
+                        character_id, account_id, slot_index, name, gender,
+                        profile_id, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """,
+                    (
+                        character_id,
+                        account_id,
+                        slot_index,
+                        engine.hero.name,
+                        engine.hero.gender,
+                        character_id,
+                    ),
+                )
+                connection.commit()
+            except sqlite3.IntegrityError as exc:
+                raise ValueError("character slot is already occupied") from exc
+
+        self.save_character(character_id, profile, engine)
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            row = self._character_row(connection, account_id, character_id)
+            if row is None:
+                raise ValueError("character not found")
+            return row
+
+    def save_character(self, character_id: str, profile: dict[str, Any], engine: GameEngine) -> None:
+        SQLiteSaveStore(self.path, profile_id=character_id).save(profile, engine)
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            connection.execute(
+                """
+                UPDATE character_slots
+                SET name = ?, gender = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE character_id = ? AND deleted_at IS NULL
+                """,
+                (engine.hero.name, engine.hero.gender, character_id),
+            )
+            connection.commit()
+
+    def load_character(self, character_id: str) -> dict[str, Any]:
+        loaded = SQLiteSaveStore(self.path, profile_id=character_id).load()
+        if loaded is None:
+            raise ValueError("character save not found")
+        return loaded
+
+    def list_characters(self, account_id: str) -> list[dict[str, Any]]:
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                SELECT character_id, account_id, slot_index, name, gender, profile_id
+                FROM character_slots
+                WHERE account_id = ? AND deleted_at IS NULL
+                ORDER BY slot_index ASC
+                """,
+                (account_id,),
+            ).fetchall()
+            return [_character_to_dict(row) for row in rows]
+
+    def delete_character(self, account_id: str, character_id: str) -> None:
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            row = self._character_row(connection, account_id, character_id)
+            if row is None:
+                raise ValueError("character not found")
+            connection.execute(
+                """
+                UPDATE character_slots
+                SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                WHERE account_id = ? AND character_id = ? AND deleted_at IS NULL
+                """,
+                (account_id, character_id),
+            )
+            connection.execute(
+                """
+                UPDATE sessions
+                SET active_character_id = NULL, last_seen_at = CURRENT_TIMESTAMP
+                WHERE account_id = ? AND active_character_id = ?
+                """,
+                (account_id, character_id),
+            )
+            connection.commit()
+
+    def migrate_local_character_to_account(self, account_id: str) -> dict[str, Any] | None:
+        if self.profile_id != "local":
+            return None
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            if self._first_active_character_id(connection, account_id) is not None:
+                return None
+        loaded = self.load()
+        if loaded is None or not loaded["profile"].get("confirmed"):
+            return None
+        return self.create_character(account_id, loaded["profile"], loaded["engine"])
+
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
@@ -436,8 +675,45 @@ class SQLiteSaveStore:
                 tick INTEGER NOT NULL,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS accounts (
+                account_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                password_salt TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS character_slots (
+                character_id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                slot_index INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                gender TEXT NOT NULL,
+                profile_id TEXT NOT NULL,
+                deleted_at TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS active_character_slots
+            ON character_slots(account_id, slot_index)
+            WHERE deleted_at IS NULL;
+
+            CREATE TABLE IF NOT EXISTS sessions (
+                token TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                active_character_id TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+            );
             """
         )
+        self._ensure_column(connection, "item_instances", "profile_id", "TEXT NOT NULL DEFAULT 'local'")
+        self._ensure_column(connection, "market_listings", "profile_id", "TEXT NOT NULL DEFAULT 'local'")
 
     def _save_profile(self, connection: sqlite3.Connection, profile: dict[str, Any]) -> None:
         connection.execute(
@@ -517,7 +793,7 @@ class SQLiteSaveStore:
         )
 
     def _sync_items(self, connection: sqlite3.Connection, engine: GameEngine) -> None:
-        connection.execute("DELETE FROM item_instances")
+        connection.execute("DELETE FROM item_instances WHERE profile_id = ?", (self.profile_id,))
         seen: set[str] = set()
         for item in engine.hero.inventory:
             self._insert_item(connection, item, item.owner_id or engine.hero.id, "inventory", seen)
@@ -545,13 +821,14 @@ class SQLiteSaveStore:
         seen.add(item.id)
         connection.execute(
             """
-            INSERT INTO item_instances (
-                item_id, owner_id, location, slot, rarity, level, score, item_json, updated_at
+            INSERT OR REPLACE INTO item_instances (
+                item_id, profile_id, owner_id, location, slot, rarity, level, score, item_json, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
             (
                 item.id,
+                self.profile_id,
                 owner_id,
                 location,
                 item.slot.value,
@@ -563,18 +840,19 @@ class SQLiteSaveStore:
         )
 
     def _sync_market(self, connection: sqlite3.Connection, engine: GameEngine) -> None:
-        connection.execute("DELETE FROM market_listings")
+        connection.execute("DELETE FROM market_listings WHERE profile_id = ?", (self.profile_id,))
         for listing in engine.market.all_listings():
             connection.execute(
                 """
-                INSERT INTO market_listings (
-                    listing_id, item_id, seller_id, buyer_id, price, active,
+                INSERT OR REPLACE INTO market_listings (
+                    listing_id, profile_id, item_id, seller_id, buyer_id, price, active,
                     created_tick, sold_tick, item_json, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """,
                 (
                     listing.id,
+                    self.profile_id,
                     listing.item.id,
                     listing.seller_id,
                     listing.buyer_id,
@@ -620,6 +898,76 @@ class SQLiteSaveStore:
         ).fetchone()
         return None if row is None else int(row["gold"])
 
+    def _require_account(self, connection: sqlite3.Connection, account_id: str) -> None:
+        row = connection.execute(
+            "SELECT account_id FROM accounts WHERE account_id = ?",
+            (account_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("account not found")
+
+    def _next_character_slot(self, connection: sqlite3.Connection, account_id: str) -> int:
+        rows = connection.execute(
+            """
+            SELECT slot_index
+            FROM character_slots
+            WHERE account_id = ? AND deleted_at IS NULL
+            """,
+            (account_id,),
+        ).fetchall()
+        used = {int(row["slot_index"]) for row in rows}
+        for slot_index in range(MAX_CHARACTERS_PER_ACCOUNT):
+            if slot_index not in used:
+                return slot_index
+        raise ValueError("account already has three characters")
+
+    def _first_active_character_id(
+        self,
+        connection: sqlite3.Connection,
+        account_id: str,
+    ) -> str | None:
+        row = connection.execute(
+            """
+            SELECT character_id
+            FROM character_slots
+            WHERE account_id = ? AND deleted_at IS NULL
+            ORDER BY slot_index ASC
+            LIMIT 1
+            """,
+            (account_id,),
+        ).fetchone()
+        return None if row is None else str(row["character_id"])
+
+    def _character_row(
+        self,
+        connection: sqlite3.Connection,
+        account_id: str,
+        character_id: str,
+    ) -> dict[str, Any] | None:
+        row = connection.execute(
+            """
+            SELECT character_id, account_id, slot_index, name, gender, profile_id
+            FROM character_slots
+            WHERE account_id = ? AND character_id = ? AND deleted_at IS NULL
+            """,
+            (account_id, character_id),
+        ).fetchone()
+        return None if row is None else _character_to_dict(row)
+
+    def _ensure_column(
+        self,
+        connection: sqlite3.Connection,
+        table_name: str,
+        column_name: str,
+        definition: str,
+    ) -> None:
+        columns = {
+            str(row["name"])
+            for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+        if column_name not in columns:
+            connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
 
 def _tuple_state(value: Any) -> Any:
     if isinstance(value, list):
@@ -629,3 +977,44 @@ def _tuple_state(value: Any) -> Any:
 
 def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _clean_username(username: str) -> str:
+    clean = str(username).strip()
+    if not clean:
+        raise ValueError("username is required")
+    if len(clean) > 32:
+        raise ValueError("username is too long")
+    return clean
+
+
+def _hash_password(password: str, salt: str) -> str:
+    clean = str(password)
+    if len(clean) < 4:
+        raise ValueError("password must be at least four characters")
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        clean.encode("utf-8"),
+        salt.encode("utf-8"),
+        PASSWORD_HASH_ITERATIONS,
+    )
+    return digest.hex()
+
+
+def _verify_password(password: str, salt: str, expected_hash: str) -> bool:
+    try:
+        actual_hash = _hash_password(password, salt)
+    except ValueError:
+        return False
+    return hmac.compare_digest(actual_hash, expected_hash)
+
+
+def _character_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "character_id": str(row["character_id"]),
+        "account_id": str(row["account_id"]),
+        "slot_index": int(row["slot_index"]),
+        "name": str(row["name"]),
+        "gender": str(row["gender"]),
+        "profile_id": str(row["profile_id"]),
+    }

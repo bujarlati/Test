@@ -9,6 +9,8 @@ import unittest
 
 from idle_forest import GameEngine
 from idle_forest.config import (
+    HERO_DEATH_GOLD_LOSS_MAX_PCT,
+    HERO_DEATH_GOLD_LOSS_MIN_PCT,
     HERO_REVIVE_SECONDS,
     MONSTER_APPROACH_DISTANCE,
     TREASURE_MIMIC_PITY_THRESHOLD,
@@ -117,6 +119,41 @@ class GameEngineTests(unittest.TestCase):
         self.assertIs(engine.active_monster, monster)
         self.assertFalse(revived_snapshot["hero"]["reviving"])
         self.assertEqual(revived_snapshot["monster"]["id"], "test_brute")
+
+    def test_hero_loses_gold_on_death_and_emits_gold_loss_event(self) -> None:
+        engine = GameEngine(seed=103, starter_gold=1000)
+        engine.hero.talents = []
+        engine.hero.base_defense = 0
+        engine.hero.hp = 5
+        monster = Monster(
+            id="test_taxer",
+            kind="test_taxer",
+            level=1,
+            max_hp=80,
+            hp=37,
+            attack=20,
+            defense=0,
+            exp_reward=0,
+            gold_reward=0,
+            x=engine.hero.x + 20,
+            y=engine.hero.y,
+        )
+        engine.active_monster = monster
+
+        engine._monster_attack()
+        gold_loss_events = [
+            event
+            for event in engine.snapshot()["events"]
+            if event["kind"] == "gold_loss"
+        ]
+
+        self.assertEqual(len(gold_loss_events), 1)
+        loss = gold_loss_events[0]["data"]["gold_lost"]
+        self.assertGreaterEqual(loss, int(1000 * HERO_DEATH_GOLD_LOSS_MIN_PCT))
+        self.assertLessEqual(loss, int(1000 * HERO_DEATH_GOLD_LOSS_MAX_PCT))
+        self.assertEqual(engine.hero.gold, 1000 - loss)
+        self.assertEqual(gold_loss_events[0]["data"]["gold_before"], 1000)
+        self.assertEqual(gold_loss_events[0]["data"]["gold_after"], engine.hero.gold)
 
     def test_snapshot_exposes_experience_progress_and_equipment_slots(self) -> None:
         engine = GameEngine(seed=32)

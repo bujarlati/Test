@@ -9,6 +9,8 @@ from typing import Any
 from .config import (
     ENCOUNTER_MAX_DISTANCE,
     ENCOUNTER_MIN_DISTANCE,
+    HERO_DEATH_GOLD_LOSS_MAX_PCT,
+    HERO_DEATH_GOLD_LOSS_MIN_PCT,
     HERO_ATTACK_RANGE,
     HERO_ATTACK_SPEED,
     HERO_GROUND_Y,
@@ -758,6 +760,7 @@ class GameEngine:
 
         monster_id = self.active_monster.id if self.active_monster else None
         self.hero.hp = 0
+        self._apply_death_gold_penalty(monster_id)
         self._revive_remaining = HERO_REVIVE_SECONDS
         self._hero_attack_timer = 0.0
         self._monster_attack_timer = 0.0
@@ -766,6 +769,23 @@ class GameEngine:
             "Hero fell and is waiting to revive.",
             monster_id=monster_id,
             revive_seconds=HERO_REVIVE_SECONDS,
+        )
+
+    def _apply_death_gold_penalty(self, monster_id: str | None) -> None:
+        gold_before = self.hero.gold
+        if gold_before <= 0:
+            return
+        loss_pct = self.rng.uniform(HERO_DEATH_GOLD_LOSS_MIN_PCT, HERO_DEATH_GOLD_LOSS_MAX_PCT)
+        gold_lost = min(gold_before, max(1, int(round(gold_before * loss_pct))))
+        self.hero.gold = max(0, gold_before - gold_lost)
+        self._add_event(
+            "gold_loss",
+            f"Death penalty: lost {gold_lost} gold.",
+            monster_id=monster_id,
+            gold_lost=gold_lost,
+            gold_before=gold_before,
+            gold_after=self.hero.gold,
+            loss_pct=round(loss_pct, 4),
         )
 
     def _advance_revive(self, dt: float) -> None:

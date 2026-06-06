@@ -29,6 +29,34 @@ class WebStaticTests(unittest.TestCase):
         ):
             self.assertIn(marker, html)
 
+    def test_frontend_has_account_login_and_three_character_slots(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        for marker in (
+            "accountPanel",
+            "accountUsernameInput",
+            "accountPasswordInput",
+            "loginButton",
+            "registerButton",
+            "characterSlotList",
+            "logoutButton",
+        ):
+            self.assertIn(marker, html)
+
+        for marker in (
+            "SESSION_STORAGE_KEY",
+            "MAX_CHARACTER_SLOTS",
+            "renderCharacterSlots",
+            "refreshAccount",
+            "/account/login",
+            "/account/register",
+            "/characters/select",
+            "/characters/delete",
+            "X-Session-Token",
+        ):
+            self.assertIn(marker, script)
+
     def test_frontend_uses_continuous_visual_motion(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
@@ -166,6 +194,15 @@ class WebStaticTests(unittest.TestCase):
         ):
             self.assertIn(marker, script)
 
+    def test_frontend_draws_gold_loss_floaters(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("gold_loss", script)
+        self.assertIn("isLootFloatEvent", script)
+        self.assertIn("goldLossFloatText", script)
+        self.assertIn("gold_lost", script)
+        self.assertIn("rarity: lootFloatRarity(event)", script)
+
     def test_frontend_draws_attack_and_rarity_particle_effects(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
@@ -280,17 +317,39 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("/profile/roll", script)
         self.assertIn("/profile/confirm", script)
 
-    def test_frontend_uses_server_save_before_local_profile(self) -> None:
+    def test_frontend_uses_account_session_before_showing_login(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
         start = script.index("function bootstrapProfile()")
         end = script.index("function applySnapshot", start)
         body = script[start:end]
 
-        self.assertIn("api('/profile')", body)
-        self.assertIn("serverProfile.confirmed", body)
+        self.assertIn("loadSessionToken()", body)
+        self.assertIn("refreshAccount()", body)
+        self.assertIn("accountState.authenticated", body)
+        self.assertIn("accountState.active_character_id", body)
         self.assertIn("api('/snapshot')", body)
-        self.assertLess(body.index("api('/profile')"), body.index("loadStoredProfile()"))
-        self.assertLess(body.index("serverProfile.confirmed"), body.index("loadStoredProfile()"))
+        self.assertLess(body.index("loadSessionToken()"), body.index("refreshAccount()"))
+        self.assertLess(body.index("accountState.active_character_id"), body.index("api('/snapshot')"))
+
+    def test_frontend_registration_stays_on_character_slots_before_entering_game(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        start = script.index("function submitAccount(")
+        end = script.index("function refreshAccount", start)
+        body = script[start:end]
+
+        self.assertIn("const isRegister = path.includes('register')", body)
+        self.assertIn("if (result.active_character_id && !isRegister)", body)
+        self.assertIn("showCharacterPanel()", body)
+        self.assertIn("showCreationPanel()", body)
+
+    def test_frontend_resumes_simulation_when_starting_game(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        start = script.index("function startGame(")
+        end = script.index("function stopGameLoop", start)
+        body = script[start:end]
+
+        self.assertIn("state.settings.paused = false", body)
+        self.assertIn("saveSettings()", body)
 
 
 if __name__ == "__main__":

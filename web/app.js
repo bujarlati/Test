@@ -47,7 +47,9 @@ const FALLBACK_GEAR_PALETTES = {
 }
 
 const PROFILE_STORAGE_KEY = 'idleForestProfile'
+const SESSION_STORAGE_KEY = 'idleForestSessionToken'
 const SETTINGS_STORAGE_KEY = 'idleForestSettings'
+const MAX_CHARACTER_SLOTS = 3
 const SIMULATION_STEP_SECONDS = 0.125
 const SIMULATION_TICK_MS = 125
 const VISUAL_SNAP_DISTANCE = 96
@@ -221,6 +223,9 @@ const state = {
   snapshot: null,
   previousSnapshot: null,
   settings: { ...DEFAULT_SETTINGS },
+  account: null,
+  characters: [],
+  activeCharacterId: null,
   equipmentTranslations: {},
   tickInFlight: false,
   gameReady: false,
@@ -356,6 +361,18 @@ const els = {
   marketList: document.querySelector('#marketList'),
   eventList: document.querySelector('#eventList'),
   profileGate: document.querySelector('#profileGate'),
+  accountPanel: document.querySelector('#accountPanel'),
+  accountUsernameInput: document.querySelector('#accountUsernameInput'),
+  accountPasswordInput: document.querySelector('#accountPasswordInput'),
+  loginButton: document.querySelector('#loginButton'),
+  registerButton: document.querySelector('#registerButton'),
+  accountStatusText: document.querySelector('#accountStatusText'),
+  characterPanel: document.querySelector('#characterPanel'),
+  accountNameText: document.querySelector('#accountNameText'),
+  logoutButton: document.querySelector('#logoutButton'),
+  characterSlotList: document.querySelector('#characterSlotList'),
+  creationPanel: document.querySelector('#creationPanel'),
+  cancelCreationButton: document.querySelector('#cancelCreationButton'),
   profileAvatar: document.querySelector('#profileAvatar'),
   characterNameInput: document.querySelector('#characterNameInput'),
   genderMaleButton: document.querySelector('#genderMaleButton'),
@@ -368,11 +385,16 @@ const els = {
 }
 
 function api(path, options = {}) {
+  const headers = {
+    'content-type': 'application/json'
+  }
+  const token = loadSessionToken()
+  if (token) {
+    headers['X-Session-Token'] = token
+  }
   return fetch(path, {
     method: options.method || 'GET',
-    headers: {
-      'content-type': 'application/json'
-    },
+    headers,
     body: options.body ? JSON.stringify(options.body) : undefined
   }).then(async (response) => {
     const data = await response.json()
@@ -687,6 +709,30 @@ function clearStoredProfile() {
   window.localStorage.removeItem(PROFILE_STORAGE_KEY)
 }
 
+function loadSessionToken() {
+  try {
+    return window.localStorage.getItem(SESSION_STORAGE_KEY) || ''
+  } catch (error) {
+    return ''
+  }
+}
+
+function saveSessionToken(token) {
+  window.localStorage.setItem(SESSION_STORAGE_KEY, token)
+}
+
+function clearSessionToken() {
+  window.localStorage.removeItem(SESSION_STORAGE_KEY)
+}
+
+function setAccountStatus(text, ok = true) {
+  if (!els.accountStatusText) {
+    return
+  }
+  els.accountStatusText.textContent = text
+  els.accountStatusText.style.color = ok ? '#9fb0a6' : '#ff9f7f'
+}
+
 function setProfileStatus(text, ok = true) {
   els.profileStatusText.textContent = text
   els.profileStatusText.style.color = ok ? '#9fb0a6' : '#ff9f7f'
@@ -698,6 +744,89 @@ function remainingRollsText(count) {
 
 function showProfileGate(show) {
   els.profileGate.classList.toggle('hidden', !show)
+}
+
+function showAccountPanel() {
+  stopGameLoop()
+  showProfileGate(true)
+  els.accountPanel.classList.remove('hidden')
+  els.characterPanel.classList.add('hidden')
+  els.creationPanel.classList.add('hidden')
+  setStatus(t('waitingCreate'))
+}
+
+function showCharacterPanel() {
+  stopGameLoop()
+  showProfileGate(true)
+  els.accountPanel.classList.add('hidden')
+  els.characterPanel.classList.remove('hidden')
+  els.creationPanel.classList.add('hidden')
+  renderCharacterSlots(state.characters)
+  setStatus(t('waitingCreate'))
+}
+
+function showCreationPanel() {
+  state.creationDraft = null
+  els.characterNameInput.value = ''
+  els.rollCountText.textContent = remainingRollsText(3)
+  els.rollTalentButton.disabled = false
+  els.confirmCharacterButton.disabled = true
+  renderCreationTalents()
+  els.creationPanel.classList.remove('hidden')
+  setProfileStatus('')
+}
+
+function accountName() {
+  return els.accountUsernameInput.value.trim()
+}
+
+function accountPassword() {
+  return els.accountPasswordInput.value
+}
+
+function renderCharacterSlots(characters = []) {
+  state.characters = characters
+  if (els.accountNameText && state.account) {
+    els.accountNameText.textContent = state.account.username
+  }
+  const bySlot = new Map(characters.map((character) => [Number(character.slot_index), character]))
+  const slots = []
+  for (let slot = 0; slot < MAX_CHARACTER_SLOTS; slot += 1) {
+    const character = bySlot.get(slot)
+    if (character) {
+      const active = character.character_id === state.activeCharacterId
+      slots.push(`
+        <article class="character-slot ${active ? 'active' : ''}">
+          <div>
+            <strong>${escapeHtml(character.name)}</strong>
+            <span>${character.gender === 'female' ? '女' : '男'} · Slot ${slot + 1}</span>
+          </div>
+          <div class="character-actions">
+            <button type="button" data-action="select-character" data-id="${escapeHtml(character.character_id)}">进入</button>
+            <button class="muted" type="button" data-action="delete-character" data-id="${escapeHtml(character.character_id)}">删除</button>
+          </div>
+        </article>
+      `)
+    } else {
+      slots.push(`
+        <article class="character-slot empty-slot">
+          <div>
+            <strong>空角色位</strong>
+            <span>Slot ${slot + 1}</span>
+          </div>
+          <button type="button" data-action="create-character">创建角色</button>
+        </article>
+      `)
+    }
+  }
+  els.characterSlotList.innerHTML = slots.join('')
+}
+
+function applyAccountState(accountState) {
+  state.account = accountState.account || null
+  state.characters = accountState.characters || []
+  state.activeCharacterId = accountState.active_character_id || null
+  renderCharacterSlots(state.characters)
 }
 
 function setGender(gender) {
@@ -776,7 +905,7 @@ function confirmCharacter() {
     }
   })
     .then((result) => {
-      saveStoredProfile(profile)
+      applyAccountState(result)
       startGame(result.snapshot)
       setStatus(t('createSuccess'))
     })
@@ -788,7 +917,13 @@ function confirmCharacter() {
 
 function startGame(snapshot) {
   state.gameReady = true
+  state.settings.paused = false
+  saveSettings()
+  if (els.pauseToggle) {
+    els.pauseToggle.checked = false
+  }
   showProfileGate(false)
+  els.creationPanel.classList.add('hidden')
   if (snapshot) {
     applySnapshot(snapshot)
   }
@@ -819,40 +954,133 @@ function resetVisualSmoothing() {
   state.lastRenderAt = 0
 }
 
-function bootstrapProfile() {
-  renderCreationTalents()
-  setStatus(t('loadingLocal'))
-  return api('/profile')
-    .then((serverProfile) => {
-      if (serverProfile.confirmed) {
+function submitAccount(path) {
+  const username = accountName()
+  const password = accountPassword()
+  const isRegister = path.includes('register')
+  if (!username || !password) {
+    setAccountStatus(currentLanguage() === 'zh-CN' ? '请输入账号和密码' : 'Enter username and password', false)
+    return
+  }
+  els.loginButton.disabled = true
+  els.registerButton.disabled = true
+  api(path, {
+    method: 'POST',
+    body: { username, password }
+  })
+    .then((result) => {
+      saveSessionToken(result.session_token)
+      applyAccountState(result)
+      setAccountStatus(isRegister
+        ? (currentLanguage() === 'zh-CN' ? '账号已创建' : 'Account created')
+        : (currentLanguage() === 'zh-CN' ? '登录成功' : 'Logged in'))
+      if (result.active_character_id && !isRegister) {
         return api('/snapshot').then((snapshot) => {
           startGame(snapshot)
           setStatus(t('connected'))
         })
       }
-      const stored = loadStoredProfile()
-      if (!stored || !stored.talent_ids) {
-        showProfileGate(true)
-        setStatus(t('waitingCreate'))
-        return null
+      showCharacterPanel()
+      if (isRegister && !(result.characters || []).length) {
+        showCreationPanel()
       }
-      return api('/profile/confirm', {
-        method: 'POST',
-        body: {
-          name: stored.name,
-          gender: stored.gender,
-          talent_ids: stored.talent_ids
-        }
-      }).then((result) => {
-        startGame(result.snapshot)
-        setStatus(t('connected'))
-        return result
-      })
+      return null
     })
     .catch((error) => {
-      clearStoredProfile()
-      showProfileGate(true)
-      setProfileStatus(error.message || t('profileInvalid'), false)
+      clearSessionToken()
+      setAccountStatus(error.message || t('actionFail'), false)
+    })
+    .finally(() => {
+      els.loginButton.disabled = false
+      els.registerButton.disabled = false
+    })
+}
+
+function refreshAccount() {
+  return api('/account')
+    .then((accountState) => {
+      if (!accountState.authenticated) {
+        clearSessionToken()
+        showAccountPanel()
+        return accountState
+      }
+      applyAccountState(accountState)
+      return accountState
+    })
+}
+
+function selectCharacter(characterId) {
+  return api('/characters/select', {
+    method: 'POST',
+    body: { character_id: characterId }
+  })
+    .then((result) => {
+      applyAccountState(result)
+      startGame(result.snapshot)
+      setStatus(t('connected'))
+    })
+    .catch((error) => {
+      setAccountStatus(error.message || t('actionFail'), false)
+    })
+}
+
+function deleteCharacter(characterId) {
+  const shouldDelete = window.confirm(currentLanguage() === 'zh-CN'
+    ? '删除角色后会腾出角色位，确认删除吗？'
+    : 'Delete this hero and free the slot?')
+  if (!shouldDelete) {
+    return
+  }
+  api('/characters/delete', {
+    method: 'POST',
+    body: { character_id: characterId }
+  })
+    .then((result) => {
+      applyAccountState(result)
+      showCharacterPanel()
+      setAccountStatus(currentLanguage() === 'zh-CN' ? '角色已删除' : 'Hero deleted')
+    })
+    .catch((error) => {
+      setAccountStatus(error.message || t('actionFail'), false)
+    })
+}
+
+function logoutAccount() {
+  clearSessionToken()
+  state.account = null
+  state.characters = []
+  state.activeCharacterId = null
+  state.snapshot = null
+  state.previousSnapshot = null
+  stopGameLoop()
+  showAccountPanel()
+}
+
+function bootstrapProfile() {
+  renderCreationTalents()
+  setStatus(t('connecting'))
+  if (!loadSessionToken()) {
+    showAccountPanel()
+    return Promise.resolve(null)
+  }
+  return refreshAccount()
+    .then((accountState) => {
+      if (!accountState.authenticated) {
+        return null
+      }
+      if (accountState.active_character_id) {
+        return api('/snapshot').then((snapshot) => {
+          startGame(snapshot)
+          setStatus(t('connected'))
+        })
+      }
+      showCharacterPanel()
+      return null
+    })
+    .catch((error) => {
+      clearSessionToken()
+      showAccountPanel()
+      setAccountStatus(error.message || t('profileInvalid'), false)
       setStatus(t('waitingCreate'), false)
     })
 }
@@ -1113,7 +1341,7 @@ function trackLootFloaters(events, scene) {
     return
   }
   events.forEach((event) => {
-    if (!isLootEvent(event)) {
+    if (!isLootFloatEvent(event)) {
       return
     }
     const key = lootEventKey(event)
@@ -1127,7 +1355,7 @@ function trackLootFloaters(events, scene) {
     state.lootFloaters.push({
       key,
       text: lootFloatText(event),
-      rarity: (event.data && event.data.rarity) || 'white',
+      rarity: lootFloatRarity(event),
       x: Number(hero.position.x || 0) + 12,
       y: Number(hero.position.y || 0),
       createdAt: state.lastRenderAt || window.performance.now()
@@ -1142,14 +1370,33 @@ function isLootEvent(event) {
   return ['loot', 'rift_loot', 'special_loot', 'pity_special_loot'].includes(event.kind)
 }
 
+function isLootFloatEvent(event) {
+  return isLootEvent(event) || event.kind === 'gold_loss'
+}
+
 function lootEventKey(event) {
   const data = event.data || {}
-  return `${event.tick}:${event.kind}:${data.item_id || event.message}`
+  return `${event.tick}:${event.kind}:${data.item_id || data.gold_lost || event.message}`
 }
 
 function lootFloatText(event) {
+  if (event.kind === 'gold_loss') {
+    return goldLossFloatText(event)
+  }
   const data = event.data || {}
   return `+1 ${translateItemName(data.item_name || event.message || t('lootFallback'))}`
+}
+
+function goldLossFloatText(event) {
+  const data = event.data || {}
+  return `-${Number(data.gold_lost || 0)} ${t('gold')}`
+}
+
+function lootFloatRarity(event) {
+  if (event.kind === 'gold_loss') {
+    return 'red'
+  }
+  return (event.data && event.data.rarity) || 'white'
 }
 
 function trackAttackEffects(events, scene) {
@@ -3211,25 +3458,48 @@ els.genderMaleButton.addEventListener('click', () => setGender('male'))
 els.genderFemaleButton.addEventListener('click', () => setGender('female'))
 els.rollTalentButton.addEventListener('click', rollCreationTalents)
 els.confirmCharacterButton.addEventListener('click', confirmCharacter)
+els.loginButton.addEventListener('click', () => submitAccount('/account/login'))
+els.registerButton.addEventListener('click', () => submitAccount('/account/register'))
+els.accountPasswordInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    submitAccount('/account/login')
+  }
+})
+els.logoutButton.addEventListener('click', logoutAccount)
+els.cancelCreationButton.addEventListener('click', () => {
+  els.creationPanel.classList.add('hidden')
+  state.creationDraft = null
+  setProfileStatus('')
+})
+els.characterSlotList.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-action]')
+  if (!button || button.disabled) {
+    return
+  }
+  if (button.dataset.action === 'create-character') {
+    showCreationPanel()
+  }
+  if (button.dataset.action === 'select-character') {
+    selectCharacter(button.dataset.id)
+  }
+  if (button.dataset.action === 'delete-character') {
+    deleteCharacter(button.dataset.id)
+  }
+})
 
 els.newCharacterButton.addEventListener('click', () => {
-  const shouldReset = window.confirm(t('resetConfirm'))
-  if (!shouldReset) {
+  if (!loadSessionToken()) {
+    showAccountPanel()
     return
   }
   stopGameLoop()
-  clearStoredProfile()
   state.snapshot = null
   state.previousSnapshot = null
-  state.creationDraft = null
-  els.characterNameInput.value = ''
-  els.rollCountText.textContent = remainingRollsText(3)
-  els.rollTalentButton.disabled = false
-  els.confirmCharacterButton.disabled = true
-  renderCreationTalents()
-  api('/profile/clear', { method: 'POST', body: {} }).catch(() => {})
-  showProfileGate(true)
-  setStatus(t('waitingCreate'))
+  refreshAccount().then((accountState) => {
+    if (accountState.authenticated) {
+      showCharacterPanel()
+    }
+  })
 })
 
 window.addEventListener('resize', resizeCanvas)

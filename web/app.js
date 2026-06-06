@@ -131,6 +131,10 @@ const UI_TEXT = {
     profileInvalid: '本地角色失效，请重新创建',
     resetConfirm: '重新创建角色会清除当前本地角色。继续吗？',
     listPrice: '挂售价格',
+    listingReady: '输入价格后确认挂售',
+    confirmList: '确认挂售',
+    cancel: '取消',
+    invalidPrice: '请输入有效价格',
     actionFail: '操作失败'
   },
   'en-US': {
@@ -203,6 +207,10 @@ const UI_TEXT = {
     profileInvalid: 'Local hero expired. Please create again.',
     resetConfirm: 'Creating a new hero clears the current local hero. Continue?',
     listPrice: 'Listing price',
+    listingReady: 'Set a price and confirm',
+    confirmList: 'Confirm',
+    cancel: 'Cancel',
+    invalidPrice: 'Enter a valid price',
     actionFail: 'Action failed'
   }
 }
@@ -217,6 +225,7 @@ const state = {
   selectedGender: 'male',
   creationDraft: null,
   tickTimer: null,
+  listingDraftItemId: null,
   lastRenderAt: 0,
   loadedAssets: 0,
   lootFloaters: [],
@@ -913,16 +922,32 @@ function renderEquipped(equipped) {
 
 function renderInventory(items) {
   if (!items.length) {
+    state.listingDraftItemId = null
     els.inventoryList.innerHTML = `<div class="empty">${t('emptyInventory')}</div>`
     return
   }
+  if (state.listingDraftItemId && !items.some((item) => item.id === state.listingDraftItemId)) {
+    state.listingDraftItemId = null
+  }
   els.inventoryList.innerHTML = items
-    .map((item) => itemHtml(item, `
-      <div class="item-actions">
-        <button data-action="equip" data-id="${item.id}">${t('equip')}</button>
-        <button class="muted" data-action="list" data-id="${item.id}" data-price="${Math.max(20, item.score * 2)}">${t('list')}</button>
-      </div>
-    `))
+    .map((item) => {
+      const defaultPrice = Math.max(20, item.score * 2)
+      const actions = state.listingDraftItemId === item.id
+        ? `
+          <div class="listing-row">
+            <input class="list-price-input" data-role="list-price" data-id="${item.id}" type="number" min="1" step="1" value="${defaultPrice}" aria-label="${escapeHtml(t('listPrice'))}" />
+            <button data-action="confirm-list" data-id="${item.id}">${t('confirmList')}</button>
+            <button class="muted" data-action="cancel-list" data-id="${item.id}">${t('cancel')}</button>
+          </div>
+        `
+        : `
+          <div class="item-actions">
+            <button data-action="equip" data-id="${item.id}">${t('equip')}</button>
+            <button class="muted" data-action="list" data-id="${item.id}" data-price="${defaultPrice}">${t('list')}</button>
+          </div>
+        `
+      return itemHtml(item, actions)
+    })
     .join('')
 }
 
@@ -3008,12 +3033,32 @@ els.inventoryList.addEventListener('click', (event) => {
     postAction('/equip-item', { item_id: itemId }, '已穿戴')
   }
   if (action === 'list') {
-    const defaultPrice = button.dataset.price || '30'
-    const price = window.prompt(t('listPrice'), defaultPrice)
-    const parsed = Number.parseInt(price, 10)
-    if (Number.isFinite(parsed) && parsed > 0) {
-      postAction('/market/list', { item_id: itemId, price: parsed }, t('list'))
+    state.listingDraftItemId = itemId
+    renderInventory((state.snapshot && state.snapshot.hero && state.snapshot.hero.inventory) || [])
+    window.requestAnimationFrame(() => {
+      const input = els.inventoryList.querySelector('input[data-role="list-price"]')
+      if (input) {
+        input.focus()
+        input.select()
+      }
+    })
+    setStatus(t('listingReady'))
+  }
+  if (action === 'cancel-list') {
+    state.listingDraftItemId = null
+    renderInventory((state.snapshot && state.snapshot.hero && state.snapshot.hero.inventory) || [])
+    setStatus(statusForSnapshot(state.snapshot))
+  }
+  if (action === 'confirm-list') {
+    const card = button.closest('.item')
+    const input = card && card.querySelector('input[data-role="list-price"]')
+    const parsed = Number.parseInt(input && input.value, 10)
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setStatus(t('invalidPrice'), false)
+      return
     }
+    state.listingDraftItemId = null
+    postAction('/market/list', { item_id: itemId, price: parsed }, t('list'))
   }
 })
 

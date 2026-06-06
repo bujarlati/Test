@@ -246,6 +246,18 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("movementIntensity", script)
         self.assertIn("drawMovementTrail", script)
 
+    def test_frontend_uses_inline_market_listing_controls(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("listingDraftItemId", script)
+        self.assertIn("list-price-input", script)
+        self.assertIn("confirm-list", script)
+        self.assertIn("cancel-list", script)
+        self.assertIn("invalidPrice", script)
+        self.assertIn(".listing-row", styles)
+        self.assertNotIn("window.prompt", script)
+
     def test_frontend_persists_local_character(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 

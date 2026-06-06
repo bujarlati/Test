@@ -190,6 +190,23 @@
       </div>
     </section>
 
+    <section id="listingPanel" class="listing-panel hidden" aria-hidden="true">
+      <div class="listing-dialog" role="dialog" aria-modal="true" aria-labelledby="listingTitle">
+        <div class="listing-head">
+          <h2 id="listingTitle">挂售价格</h2>
+          <button id="listingCancelButton" class="muted" type="button">取消</button>
+        </div>
+        <div id="listingItemPreview" class="listing-preview"></div>
+        <label class="listing-field">
+          <span id="listingPriceLabel">挂售价格</span>
+          <input id="listingPriceInput" type="number" min="1" step="1" value="30" inputmode="numeric" />
+        </label>
+        <div class="listing-actions">
+          <button id="listingConfirmButton" type="button">确认挂售</button>
+        </div>
+      </div>
+    </section>
+
     <script src="/web/app.js"></script>
   </body>
 </html>

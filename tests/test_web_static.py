@@ -246,17 +246,32 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("movementIntensity", script)
         self.assertIn("drawMovementTrail", script)
 
-    def test_frontend_uses_inline_market_listing_controls(self) -> None:
+    def test_frontend_uses_listing_price_dialog(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
         styles = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
 
+        self.assertIn("listingPanel", html)
+        self.assertIn("listingPriceInput", html)
+        self.assertIn("listingConfirmButton", html)
+        self.assertIn("listingCancelButton", html)
         self.assertIn("listingDraftItemId", script)
-        self.assertIn("list-price-input", script)
-        self.assertIn("confirm-list", script)
-        self.assertIn("cancel-list", script)
+        self.assertIn("openListingPanel", script)
+        self.assertIn("closeListingPanel", script)
         self.assertIn("invalidPrice", script)
-        self.assertIn(".listing-row", styles)
+        self.assertIn(".listing-panel", styles)
         self.assertNotIn("window.prompt", script)
+
+    def test_frontend_keeps_market_buttons_stable_between_ticks(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("inventoryRenderSignature", script)
+        self.assertIn("marketRenderSignature", script)
+        self.assertIn("marketActionInFlightIds", script)
+        self.assertIn("inventorySignature", script)
+        self.assertIn("marketSignature", script)
+        self.assertIn("renderInventory(hero.inventory || [], false)", script)
+        self.assertIn("renderMarket((snapshot.market && snapshot.market.active) || [], hero.id, false)", script)
 
     def test_frontend_persists_local_character(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")

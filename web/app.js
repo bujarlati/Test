@@ -107,6 +107,7 @@ const UI_TEXT = {
     marketEmpty: '暂无挂单',
     mine: '我的挂单',
     buy: '购买',
+    buying: '购买中',
     score: '评分',
     priceGold: '金',
     specialSet: '特殊套装',
@@ -183,6 +184,7 @@ const UI_TEXT = {
     marketEmpty: 'No listings',
     mine: 'My listing',
     buy: 'Buy',
+    buying: 'Buying',
     score: 'Score',
     priceGold: 'g',
     specialSet: 'Special Set',
@@ -226,6 +228,10 @@ const state = {
   creationDraft: null,
   tickTimer: null,
   listingDraftItemId: null,
+  listingDraftItem: null,
+  inventoryRenderSignature: '',
+  marketRenderSignature: '',
+  marketActionInFlightIds: new Set(),
   lastRenderAt: 0,
   loadedAssets: 0,
   lootFloaters: [],
@@ -324,6 +330,13 @@ const els = {
   pauseToggle: document.querySelector('#pauseToggle'),
   volumeSlider: document.querySelector('#volumeSlider'),
   languageSelect: document.querySelector('#languageSelect'),
+  listingPanel: document.querySelector('#listingPanel'),
+  listingTitle: document.querySelector('#listingTitle'),
+  listingCancelButton: document.querySelector('#listingCancelButton'),
+  listingItemPreview: document.querySelector('#listingItemPreview'),
+  listingPriceLabel: document.querySelector('#listingPriceLabel'),
+  listingPriceInput: document.querySelector('#listingPriceInput'),
+  listingConfirmButton: document.querySelector('#listingConfirmButton'),
   newCharacterButton: document.querySelector('#newCharacterButton'),
   riftThemeText: document.querySelector('#riftThemeText'),
   riftProgressBar: document.querySelector('#riftProgressBar'),
@@ -420,6 +433,7 @@ function applySettings() {
   setMasterVolume(state.settings.volume)
   applyStaticTranslations()
   if (state.snapshot) {
+    resetListRenderSignatures()
     applySnapshot(state.snapshot)
   }
   setStatus(state.settings.paused ? t('paused') : statusForSnapshot(state.snapshot), true)
@@ -429,6 +443,10 @@ function applyStaticTranslations() {
   setText('#settingsButton', t('settings'))
   setText('#settingsTitle', t('settings'))
   setText('#settingsCloseButton', t('close'))
+  setText('#listingTitle', t('listPrice'))
+  setText('#listingCancelButton', t('cancel'))
+  setText('#listingPriceLabel', t('listPrice'))
+  setText('#listingConfirmButton', t('confirmList'))
   setText('#newCharacterButton', t('newCharacter'))
   setText('.resource small', t('gold'))
   setText('.hero-strip .stat:nth-child(1) span', t('level'))
@@ -475,6 +493,50 @@ function toggleSettingsPanel(show) {
   els.settingsPanel.setAttribute('aria-hidden', show ? 'false' : 'true')
 }
 
+function resetListRenderSignatures() {
+  state.inventoryRenderSignature = ''
+  state.marketRenderSignature = ''
+}
+
+function openListingPanel(item) {
+  if (!item || !els.listingPanel) {
+    return
+  }
+  state.listingDraftItemId = item.id
+  state.listingDraftItem = item
+  els.listingItemPreview.innerHTML = itemHtml(item, '')
+  els.listingPriceInput.value = String(Math.max(20, Number(item.score || 0) * 2))
+  els.listingPanel.classList.remove('hidden')
+  els.listingPanel.setAttribute('aria-hidden', 'false')
+  window.requestAnimationFrame(() => {
+    els.listingPriceInput.focus()
+    els.listingPriceInput.select()
+  })
+  setStatus(t('listingReady'))
+}
+
+function closeListingPanel() {
+  state.listingDraftItemId = null
+  state.listingDraftItem = null
+  if (!els.listingPanel) {
+    return
+  }
+  els.listingPanel.classList.add('hidden')
+  els.listingPanel.setAttribute('aria-hidden', 'true')
+  els.listingItemPreview.innerHTML = ''
+}
+
+function submitListingDraft() {
+  const itemId = state.listingDraftItemId
+  const parsed = Number.parseInt(els.listingPriceInput.value, 10)
+  if (!itemId || !Number.isFinite(parsed) || parsed <= 0) {
+    setStatus(t('invalidPrice'), false)
+    return
+  }
+  closeListingPanel()
+  postAction('/market/list', { item_id: itemId, price: parsed }, t('list'))
+}
+
 function togglePause(paused) {
   state.settings.paused = Boolean(paused)
   saveSettings()
@@ -493,6 +555,7 @@ function loadEquipmentTranslations() {
     .then((translations) => {
       state.equipmentTranslations = translations || {}
       if (state.snapshot) {
+        resetListRenderSignatures()
         applySnapshot(state.snapshot)
       }
     })
@@ -843,8 +906,8 @@ function applySnapshot(snapshot) {
   renderEquipmentSlots(hero.equipment_slots || [], hero.equipped || {})
   renderEquipped(hero.equipped || {})
   renderTalents(hero.talents || [], hero.talent_scrolls || 0, snapshot.talent || {})
-  renderInventory(hero.inventory || [])
-  renderMarket((snapshot.market && snapshot.market.active) || [], hero.id)
+  renderInventory(hero.inventory || [], false)
+  renderMarket((snapshot.market && snapshot.market.active) || [], hero.id, false)
   renderEvents(snapshot.events || [])
 }
 
@@ -920,38 +983,79 @@ function renderEquipped(equipped) {
   els.equippedList.innerHTML = items.map((item) => itemHtml(item, '')).join('') + renderSetBonuses(bonuses)
 }
 
-function renderInventory(items) {
-  if (!items.length) {
-    state.listingDraftItemId = null
-    els.inventoryList.innerHTML = `<div class="empty">${t('emptyInventory')}</div>`
+function itemSignature(item) {
+  return JSON.stringify({
+    id: item.id,
+    name: item.name,
+    slot: item.slot,
+    rarity: item.rarity,
+    level: item.level,
+    attack: item.attack,
+    defense: item.defense,
+    max_hp: item.max_hp,
+    attack_speed: item.attack_speed,
+    hp_regen: item.hp_regen,
+    attack_range: item.attack_range,
+    weapon_type: item.weapon_type,
+    owner_id: item.owner_id,
+    score: item.score,
+    special: item.special,
+    set_id: item.set_id,
+    set_name: item.set_name,
+    set_piece: item.set_piece
+  })
+}
+
+function inventorySignature(items) {
+  return items.map((item) => itemSignature(item)).join('|')
+}
+
+function marketSignature(listings, heroId) {
+  return listings
+    .map((listing) => JSON.stringify({
+      id: listing.id,
+      seller_id: listing.seller_id,
+      own: listing.seller_id === heroId,
+      price: listing.price,
+      pending: state.marketActionInFlightIds.has(listing.id),
+      item: itemSignature(listing.item)
+    }))
+    .join('|')
+}
+
+function renderInventory(items, force = true) {
+  if (state.listingDraftItemId && !items.some((item) => item.id === state.listingDraftItemId)) {
+    closeListingPanel()
+  }
+  const signature = inventorySignature(items)
+  if (!force && state.inventoryRenderSignature === signature) {
     return
   }
-  if (state.listingDraftItemId && !items.some((item) => item.id === state.listingDraftItemId)) {
-    state.listingDraftItemId = null
+  state.inventoryRenderSignature = signature
+  if (!items.length) {
+    els.inventoryList.innerHTML = `<div class="empty">${t('emptyInventory')}</div>`
+    return
   }
   els.inventoryList.innerHTML = items
     .map((item) => {
       const defaultPrice = Math.max(20, item.score * 2)
-      const actions = state.listingDraftItemId === item.id
-        ? `
-          <div class="listing-row">
-            <input class="list-price-input" data-role="list-price" data-id="${item.id}" type="number" min="1" step="1" value="${defaultPrice}" aria-label="${escapeHtml(t('listPrice'))}" />
-            <button data-action="confirm-list" data-id="${item.id}">${t('confirmList')}</button>
-            <button class="muted" data-action="cancel-list" data-id="${item.id}">${t('cancel')}</button>
-          </div>
-        `
-        : `
-          <div class="item-actions">
-            <button data-action="equip" data-id="${item.id}">${t('equip')}</button>
-            <button class="muted" data-action="list" data-id="${item.id}" data-price="${defaultPrice}">${t('list')}</button>
-          </div>
-        `
+      const actions = `
+        <div class="item-actions">
+          <button data-action="equip" data-id="${item.id}">${t('equip')}</button>
+          <button class="muted" data-action="list" data-id="${item.id}" data-price="${defaultPrice}">${t('list')}</button>
+        </div>
+      `
       return itemHtml(item, actions)
     })
     .join('')
 }
 
-function renderMarket(listings, heroId) {
+function renderMarket(listings, heroId, force = true) {
+  const signature = marketSignature(listings, heroId)
+  if (!force && state.marketRenderSignature === signature) {
+    return
+  }
+  state.marketRenderSignature = signature
   if (!listings.length) {
     els.marketList.innerHTML = `<div class="empty">${t('marketEmpty')}</div>`
     return
@@ -960,6 +1064,7 @@ function renderMarket(listings, heroId) {
     .map((listing) => {
       const item = listing.item
       const own = listing.seller_id === heroId
+      const pending = state.marketActionInFlightIds.has(listing.id)
       return `
         <article class="item rarity-${item.rarity}">
           <div class="item-visual">
@@ -972,7 +1077,7 @@ function renderMarket(listings, heroId) {
               <div class="item-sub">${own ? t('mine') : listing.seller_id} · ${slotLabel(item.slot)} · ${t('score')} ${item.score}</div>
               ${specialLine(item)}
               <div class="item-actions">
-                <button data-action="buy" data-id="${listing.id}" ${own ? 'disabled' : ''}>${t('buy')}</button>
+                <button data-action="buy" data-id="${listing.id}" ${own || pending ? 'disabled' : ''}>${pending ? t('buying') : t('buy')}</button>
               </div>
             </div>
           </div>
@@ -3033,32 +3138,32 @@ els.inventoryList.addEventListener('click', (event) => {
     postAction('/equip-item', { item_id: itemId }, '已穿戴')
   }
   if (action === 'list') {
-    state.listingDraftItemId = itemId
-    renderInventory((state.snapshot && state.snapshot.hero && state.snapshot.hero.inventory) || [])
-    window.requestAnimationFrame(() => {
-      const input = els.inventoryList.querySelector('input[data-role="list-price"]')
-      if (input) {
-        input.focus()
-        input.select()
-      }
-    })
-    setStatus(t('listingReady'))
+    const item = ((state.snapshot && state.snapshot.hero && state.snapshot.hero.inventory) || [])
+      .find((candidate) => candidate.id === itemId)
+    openListingPanel(item)
   }
-  if (action === 'cancel-list') {
-    state.listingDraftItemId = null
-    renderInventory((state.snapshot && state.snapshot.hero && state.snapshot.hero.inventory) || [])
+})
+
+els.listingCancelButton.addEventListener('click', () => {
+  closeListingPanel()
+  setStatus(statusForSnapshot(state.snapshot))
+})
+
+els.listingPanel.addEventListener('click', (event) => {
+  if (event.target === els.listingPanel) {
+    closeListingPanel()
     setStatus(statusForSnapshot(state.snapshot))
   }
-  if (action === 'confirm-list') {
-    const card = button.closest('.item')
-    const input = card && card.querySelector('input[data-role="list-price"]')
-    const parsed = Number.parseInt(input && input.value, 10)
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      setStatus(t('invalidPrice'), false)
-      return
-    }
-    state.listingDraftItemId = null
-    postAction('/market/list', { item_id: itemId, price: parsed }, t('list'))
+})
+
+els.listingConfirmButton.addEventListener('click', submitListingDraft)
+els.listingPriceInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    submitListingDraft()
+  }
+  if (event.key === 'Escape') {
+    closeListingPanel()
+    setStatus(statusForSnapshot(state.snapshot))
   }
 })
 
@@ -3075,7 +3180,22 @@ els.marketList.addEventListener('click', (event) => {
   if (!button || button.disabled) {
     return
   }
-  postAction('/market/buy', { listing_id: button.dataset.id }, t('buy'))
+  const listingId = button.dataset.id
+  if (state.marketActionInFlightIds.has(listingId)) {
+    return
+  }
+  state.marketActionInFlightIds.add(listingId)
+  if (state.snapshot && state.snapshot.market && state.snapshot.hero) {
+    renderMarket(state.snapshot.market.active || [], state.snapshot.hero.id, true)
+  }
+  setStatus(t('buying'))
+  postAction('/market/buy', { listing_id: listingId }, t('buy'))
+    .finally(() => {
+      state.marketActionInFlightIds.delete(listingId)
+      if (state.snapshot && state.snapshot.market && state.snapshot.hero) {
+        renderMarket(state.snapshot.market.active || [], state.snapshot.hero.id, true)
+      }
+    })
 })
 
 els.genderMaleButton.addEventListener('click', () => setGender('male'))

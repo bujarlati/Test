@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import importlib
+import os
+import sys
+import tempfile
+from pathlib import Path
 import unittest
 
 from idle_forest import GameEngine
@@ -520,12 +525,29 @@ class GameEngineTests(unittest.TestCase):
         )
 
     def test_profile_rolls_are_limited_to_three(self) -> None:
-        from server import ProfileSession
+        old_db_path = os.environ.get("IDLE_FOREST_DB_PATH")
+        old_save_path = os.environ.get("IDLE_FOREST_SAVE_PATH")
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                os.environ["IDLE_FOREST_DB_PATH"] = str(Path(directory) / "idle_forest.db")
+                os.environ["IDLE_FOREST_SAVE_PATH"] = str(Path(directory) / "savegame.json")
+                sys.modules.pop("server", None)
+                ProfileSession = importlib.import_module("server").ProfileSession
 
-        session = ProfileSession(seed=26)
-        first = session.roll(name="Astra", gender="female")
-        second = session.roll(name="Astra", gender="female")
-        third = session.roll(name="Astra", gender="female")
+                session = ProfileSession(seed=26)
+                first = session.roll(name="Astra", gender="female")
+                second = session.roll(name="Astra", gender="female")
+                third = session.roll(name="Astra", gender="female")
+        finally:
+            if old_db_path is None:
+                os.environ.pop("IDLE_FOREST_DB_PATH", None)
+            else:
+                os.environ["IDLE_FOREST_DB_PATH"] = old_db_path
+            if old_save_path is None:
+                os.environ.pop("IDLE_FOREST_SAVE_PATH", None)
+            else:
+                os.environ["IDLE_FOREST_SAVE_PATH"] = old_save_path
+            sys.modules.pop("server", None)
 
         self.assertEqual(first["rolls_remaining"], 2)
         self.assertEqual(second["rolls_remaining"], 1)

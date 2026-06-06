@@ -19,13 +19,14 @@ from urllib.parse import urlparse
 
 from idle_forest import GameEngine
 from idle_forest.models import Talent
-from idle_forest.persistence import SaveStore
+from idle_forest.persistence import SaveStore, SQLiteSaveStore
 from idle_forest.talents import TALENT_CATALOG, TALENT_TIER_CONFIG, roll_starting_talents
 
 
 WEB_ROOT = Path(__file__).with_name("web")
-SAVE_PATH = Path(os.environ.get("IDLE_FOREST_SAVE_PATH", Path(__file__).with_name("data") / "savegame.json"))
-SAVE_STORE = SaveStore(SAVE_PATH)
+DATABASE_PATH = Path(os.environ.get("IDLE_FOREST_DB_PATH", Path(__file__).with_name("data") / "idle_forest.db"))
+LEGACY_SAVE_PATH = Path(os.environ.get("IDLE_FOREST_SAVE_PATH", Path(__file__).with_name("data") / "savegame.json"))
+SAVE_STORE = SQLiteSaveStore(DATABASE_PATH, legacy_store=SaveStore(LEGACY_SAVE_PATH))
 
 
 def _safe_print(message: str) -> None:

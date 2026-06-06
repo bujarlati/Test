@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections import deque
+from contextlib import closing
 import json
 from pathlib import Path
+import sqlite3
 from typing import Any
 
 from .engine import GameEngine
@@ -309,7 +311,321 @@ class SaveStore:
         self.path.unlink(missing_ok=True)
 
 
+class SQLiteSaveStore:
+    def __init__(
+        self,
+        path: Path,
+        legacy_store: SaveStore | None = None,
+        profile_id: str = "local",
+    ) -> None:
+        self.path = path
+        self.legacy_store = legacy_store
+        self.profile_id = profile_id
+
+    def save(self, profile: dict[str, Any], engine: GameEngine) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            previous_gold = self._previous_gold(connection, engine.hero.id)
+            connection.execute("BEGIN")
+            self._save_profile(connection, profile)
+            self._save_engine_blob(connection, engine)
+            self._sync_character(connection, engine)
+            self._sync_items(connection, engine)
+            self._sync_market(connection, engine)
+            self._sync_gold_ledger(connection, engine, previous_gold)
+            connection.commit()
+
+    def load(self) -> dict[str, Any] | None:
+        if self.path.exists():
+            with closing(self._connect()) as connection:
+                self._ensure_schema(connection)
+                row = connection.execute(
+                    "SELECT profile_json, engine_json FROM engine_saves WHERE profile_id = ?",
+                    (self.profile_id,),
+                ).fetchone()
+                if row is not None:
+                    return {
+                        "profile": json.loads(row["profile_json"]),
+                        "engine": engine_from_save(json.loads(row["engine_json"])),
+                    }
+
+        legacy = self.legacy_store.load() if self.legacy_store is not None else None
+        if legacy is None:
+            return None
+        self.save(legacy["profile"], legacy["engine"])
+        return legacy
+
+    def delete(self) -> None:
+        self.path.unlink(missing_ok=True)
+        self.path.with_suffix(f"{self.path.suffix}-wal").unlink(missing_ok=True)
+        self.path.with_suffix(f"{self.path.suffix}-shm").unlink(missing_ok=True)
+        if self.legacy_store is not None:
+            self.legacy_store.delete()
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.path)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        return connection
+
+    def _ensure_schema(self, connection: sqlite3.Connection) -> None:
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS profiles (
+                profile_id TEXT PRIMARY KEY,
+                confirmed_json TEXT,
+                draft_json TEXT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS engine_saves (
+                profile_id TEXT PRIMARY KEY,
+                version INTEGER NOT NULL,
+                profile_json TEXT NOT NULL,
+                engine_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (profile_id) REFERENCES profiles(profile_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS characters (
+                hero_id TEXT PRIMARY KEY,
+                profile_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                gender TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                gold INTEGER NOT NULL,
+                forest_depth INTEGER NOT NULL,
+                mode TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (profile_id) REFERENCES profiles(profile_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS item_instances (
+                item_id TEXT PRIMARY KEY,
+                owner_id TEXT,
+                location TEXT NOT NULL,
+                slot TEXT NOT NULL,
+                rarity TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                score INTEGER NOT NULL,
+                item_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS market_listings (
+                listing_id TEXT PRIMARY KEY,
+                item_id TEXT NOT NULL,
+                seller_id TEXT NOT NULL,
+                buyer_id TEXT,
+                price INTEGER NOT NULL,
+                active INTEGER NOT NULL,
+                created_tick INTEGER NOT NULL,
+                sold_tick INTEGER,
+                item_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS gold_ledger (
+                entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hero_id TEXT NOT NULL,
+                delta INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                related_id TEXT,
+                balance_after INTEGER NOT NULL,
+                tick INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+
+    def _save_profile(self, connection: sqlite3.Connection, profile: dict[str, Any]) -> None:
+        connection.execute(
+            """
+            INSERT INTO profiles (profile_id, confirmed_json, draft_json, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(profile_id) DO UPDATE SET
+                confirmed_json = excluded.confirmed_json,
+                draft_json = excluded.draft_json,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                self.profile_id,
+                _json(profile.get("confirmed")),
+                _json(profile.get("draft")),
+            ),
+        )
+
+    def _save_engine_blob(self, connection: sqlite3.Connection, engine: GameEngine) -> None:
+        connection.execute(
+            """
+            INSERT INTO engine_saves (profile_id, version, profile_json, engine_json, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(profile_id) DO UPDATE SET
+                version = excluded.version,
+                profile_json = excluded.profile_json,
+                engine_json = excluded.engine_json,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                self.profile_id,
+                SAVE_VERSION,
+                _json(self._profile_snapshot(connection)),
+                _json(engine_to_save(engine)),
+            ),
+        )
+
+    def _profile_snapshot(self, connection: sqlite3.Connection) -> dict[str, Any]:
+        row = connection.execute(
+            "SELECT confirmed_json, draft_json FROM profiles WHERE profile_id = ?",
+            (self.profile_id,),
+        ).fetchone()
+        if row is None:
+            return {"confirmed": None, "draft": None}
+        return {
+            "confirmed": json.loads(row["confirmed_json"]) if row["confirmed_json"] else None,
+            "draft": json.loads(row["draft_json"]) if row["draft_json"] else None,
+        }
+
+    def _sync_character(self, connection: sqlite3.Connection, engine: GameEngine) -> None:
+        connection.execute(
+            """
+            INSERT INTO characters (
+                hero_id, profile_id, name, gender, level, gold, forest_depth, mode, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(hero_id) DO UPDATE SET
+                profile_id = excluded.profile_id,
+                name = excluded.name,
+                gender = excluded.gender,
+                level = excluded.level,
+                gold = excluded.gold,
+                forest_depth = excluded.forest_depth,
+                mode = excluded.mode,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                engine.hero.id,
+                self.profile_id,
+                engine.hero.name,
+                engine.hero.gender,
+                engine.hero.level,
+                engine.hero.gold,
+                engine.forest_depth,
+                engine.mode,
+            ),
+        )
+
+    def _sync_items(self, connection: sqlite3.Connection, engine: GameEngine) -> None:
+        connection.execute("DELETE FROM item_instances")
+        seen: set[str] = set()
+        for item in engine.hero.inventory:
+            self._insert_item(connection, item, item.owner_id or engine.hero.id, "inventory", seen)
+        for item in engine.hero.equipped.values():
+            self._insert_item(connection, item, item.owner_id or engine.hero.id, "equipped", seen)
+        for listing in engine.market.all_listings():
+            self._insert_item(
+                connection,
+                listing.item,
+                listing.item.owner_id or listing.buyer_id or listing.seller_id,
+                "market",
+                seen,
+            )
+
+    def _insert_item(
+        self,
+        connection: sqlite3.Connection,
+        item: Equipment,
+        owner_id: str | None,
+        location: str,
+        seen: set[str],
+    ) -> None:
+        if item.id in seen:
+            return
+        seen.add(item.id)
+        connection.execute(
+            """
+            INSERT INTO item_instances (
+                item_id, owner_id, location, slot, rarity, level, score, item_json, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            (
+                item.id,
+                owner_id,
+                location,
+                item.slot.value,
+                item.rarity.value,
+                item.level,
+                item.score,
+                _json(equipment_to_save(item)),
+            ),
+        )
+
+    def _sync_market(self, connection: sqlite3.Connection, engine: GameEngine) -> None:
+        connection.execute("DELETE FROM market_listings")
+        for listing in engine.market.all_listings():
+            connection.execute(
+                """
+                INSERT INTO market_listings (
+                    listing_id, item_id, seller_id, buyer_id, price, active,
+                    created_tick, sold_tick, item_json, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (
+                    listing.id,
+                    listing.item.id,
+                    listing.seller_id,
+                    listing.buyer_id,
+                    listing.price,
+                    1 if listing.active else 0,
+                    listing.created_tick,
+                    listing.sold_tick,
+                    _json(equipment_to_save(listing.item)),
+                ),
+            )
+
+    def _sync_gold_ledger(
+        self,
+        connection: sqlite3.Connection,
+        engine: GameEngine,
+        previous_gold: int | None,
+    ) -> None:
+        current_gold = engine.hero.gold
+        if previous_gold == current_gold:
+            return
+        connection.execute(
+            """
+            INSERT INTO gold_ledger (
+                hero_id, delta, reason, related_id, balance_after, tick
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                engine.hero.id,
+                current_gold if previous_gold is None else current_gold - previous_gold,
+                "initial_sync" if previous_gold is None else "sync",
+                None,
+                current_gold,
+                engine.tick,
+            ),
+        )
+
+    def _previous_gold(self, connection: sqlite3.Connection, hero_id: str) -> int | None:
+        self._ensure_schema(connection)
+        row = connection.execute(
+            "SELECT gold FROM characters WHERE hero_id = ?",
+            (hero_id,),
+        ).fetchone()
+        return None if row is None else int(row["gold"])
+
+
 def _tuple_state(value: Any) -> Any:
     if isinstance(value, list):
         return tuple(_tuple_state(item) for item in value)
     return value
+
+
+def _json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)

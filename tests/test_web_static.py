@@ -280,6 +280,18 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("/profile/roll", script)
         self.assertIn("/profile/confirm", script)
 
+    def test_frontend_uses_server_save_before_local_profile(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        start = script.index("function bootstrapProfile()")
+        end = script.index("function applySnapshot", start)
+        body = script[start:end]
+
+        self.assertIn("api('/profile')", body)
+        self.assertIn("serverProfile.confirmed", body)
+        self.assertIn("api('/snapshot')", body)
+        self.assertLess(body.index("api('/profile')"), body.index("loadStoredProfile()"))
+        self.assertLess(body.index("serverProfile.confirmed"), body.index("loadStoredProfile()"))
+
 
 if __name__ == "__main__":
     unittest.main()

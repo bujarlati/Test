@@ -3,6 +3,8 @@ __pycache__/
 
 server.out.log
 server.err.log
+data/savegame.json
+data/savegame.json.tmp
 
 web/assets/visual-check.png
 web/assets/source/kenney_new-platformer-pack/

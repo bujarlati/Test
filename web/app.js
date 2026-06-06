@@ -821,24 +821,33 @@ function resetVisualSmoothing() {
 
 function bootstrapProfile() {
   renderCreationTalents()
-  const stored = loadStoredProfile()
-  if (!stored || !stored.talent_ids) {
-    showProfileGate(true)
-    setStatus(t('waitingCreate'))
-    return Promise.resolve()
-  }
   setStatus(t('loadingLocal'))
-  return api('/profile/confirm', {
-    method: 'POST',
-    body: {
-      name: stored.name,
-      gender: stored.gender,
-      talent_ids: stored.talent_ids
-    }
-  })
-    .then((result) => {
-      startGame(result.snapshot)
-      setStatus(t('connected'))
+  return api('/profile')
+    .then((serverProfile) => {
+      if (serverProfile.confirmed) {
+        return api('/snapshot').then((snapshot) => {
+          startGame(snapshot)
+          setStatus(t('connected'))
+        })
+      }
+      const stored = loadStoredProfile()
+      if (!stored || !stored.talent_ids) {
+        showProfileGate(true)
+        setStatus(t('waitingCreate'))
+        return null
+      }
+      return api('/profile/confirm', {
+        method: 'POST',
+        body: {
+          name: stored.name,
+          gender: stored.gender,
+          talent_ids: stored.talent_ids
+        }
+      }).then((result) => {
+        startGame(result.snapshot)
+        setStatus(t('connected'))
+        return result
+      })
     })
     .catch((error) => {
       clearStoredProfile()

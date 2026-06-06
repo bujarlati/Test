@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
 import random
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,10 +19,13 @@ from urllib.parse import urlparse
 
 from idle_forest import GameEngine
 from idle_forest.models import Talent
+from idle_forest.persistence import SaveStore
 from idle_forest.talents import TALENT_CATALOG, TALENT_TIER_CONFIG, roll_starting_talents
 
 
 WEB_ROOT = Path(__file__).with_name("web")
+SAVE_PATH = Path(os.environ.get("IDLE_FOREST_SAVE_PATH", Path(__file__).with_name("data") / "savegame.json"))
+SAVE_STORE = SaveStore(SAVE_PATH)
 
 
 def _safe_print(message: str) -> None:
@@ -96,6 +100,16 @@ class ProfileSession:
         self.draft = None
         self.confirmed = None
 
+    def to_save(self) -> dict[str, Any]:
+        return {
+            "draft": self.draft,
+            "confirmed": self.confirmed,
+        }
+
+    def load_save(self, data: dict[str, Any]) -> None:
+        self.draft = data.get("draft")
+        self.confirmed = data.get("confirmed")
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "confirmed": self.confirmed is not None,
@@ -159,7 +173,23 @@ def _engine_from_profile() -> GameEngine:
     )
 
 
-ENGINE = _engine_from_profile()
+def _load_engine() -> GameEngine:
+    try:
+        loaded = SAVE_STORE.load()
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        _safe_print(f"Could not load savegame: {exc}")
+        return _engine_from_profile()
+    if loaded is None:
+        return _engine_from_profile()
+    PROFILE.load_save(loaded["profile"])
+    return loaded["engine"]
+
+
+def _save_game() -> None:
+    SAVE_STORE.save(PROFILE.to_save(), ENGINE)
+
+
+ENGINE = _load_engine()
 
 
 class IdleForestHandler(BaseHTTPRequestHandler):
@@ -206,13 +236,17 @@ class IdleForestHandler(BaseHTTPRequestHandler):
             payload = self._read_json()
             if path == "/reset":
                 ENGINE = _engine_from_profile()
-                self._send_json(ENGINE.snapshot())
+                snapshot = ENGINE.snapshot()
+                _save_game()
+                self._send_json(snapshot)
                 return
             if path == "/profile/roll":
-                self._send_json(PROFILE.roll(
+                result = PROFILE.roll(
                     name=str(payload.get("name", "")),
                     gender=str(payload.get("gender", "")),
-                ))
+                )
+                _save_game()
+                self._send_json(result)
                 return
             if path == "/profile/confirm":
                 talent_ids = payload.get("talent_ids")
@@ -224,62 +258,85 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                     talent_ids=[str(talent_id) for talent_id in talent_ids] if talent_ids is not None else None,
                 )
                 ENGINE = _engine_from_profile()
-                self._send_json({"profile": PROFILE.to_dict(), "snapshot": ENGINE.snapshot()})
+                snapshot = ENGINE.snapshot()
+                _save_game()
+                self._send_json({"profile": PROFILE.to_dict(), "snapshot": snapshot})
                 return
             if path == "/profile/clear":
                 PROFILE.clear()
                 ENGINE = _engine_from_profile()
+                SAVE_STORE.delete()
                 self._send_json({"profile": PROFILE.to_dict(), "snapshot": ENGINE.snapshot()})
                 return
             if path == "/tick":
                 seconds = float(payload.get("seconds", 1))
-                self._send_json(ENGINE.advance(seconds))
+                snapshot = ENGINE.advance(seconds)
+                _save_game()
+                self._send_json(snapshot)
                 return
             if path == "/rift/enter":
                 floor = payload.get("floor")
                 rift = ENGINE.enter_rift(int(floor) if floor is not None else None)
-                self._send_json({"rift": rift.to_dict(), "snapshot": ENGINE.snapshot()})
+                snapshot = ENGINE.snapshot()
+                _save_game()
+                self._send_json({"rift": rift.to_dict(), "snapshot": snapshot})
                 return
             if path == "/rift/leave":
                 ENGINE.leave_rift()
-                self._send_json(ENGINE.snapshot())
+                snapshot = ENGINE.snapshot()
+                _save_game()
+                self._send_json(snapshot)
                 return
             if path == "/forest/deepen":
-                self._send_json(ENGINE.deepen_forest())
+                snapshot = ENGINE.deepen_forest()
+                _save_game()
+                self._send_json(snapshot)
                 return
             if path == "/forest/retreat":
-                self._send_json(ENGINE.retreat_forest())
+                snapshot = ENGINE.retreat_forest()
+                _save_game()
+                self._send_json(snapshot)
                 return
             if path == "/equip-best":
                 equipped = ENGINE.equip_best_items()
+                snapshot = ENGINE.snapshot()
+                _save_game()
                 self._send_json(
                     {
                         "equipped": [item.to_dict() for item in equipped],
-                        "snapshot": ENGINE.snapshot(),
+                        "snapshot": snapshot,
                     }
                 )
                 return
             if path == "/equip-item":
                 item = ENGINE.equip_item(item_id=str(payload["item_id"]))
-                self._send_json({"item": item.to_dict(), "snapshot": ENGINE.snapshot()})
+                snapshot = ENGINE.snapshot()
+                _save_game()
+                self._send_json({"item": item.to_dict(), "snapshot": snapshot})
                 return
             if path == "/talent/evolve":
                 result = ENGINE.evolve_talent(talent_id=str(payload["talent_id"]))
-                self._send_json({"talent": result, "snapshot": ENGINE.snapshot()})
+                snapshot = ENGINE.snapshot()
+                _save_game()
+                self._send_json({"talent": result, "snapshot": snapshot})
                 return
             if path == "/market/list":
                 listing = ENGINE.list_item(
                     item_id=str(payload["item_id"]),
                     price=int(payload["price"]),
                 )
-                self._send_json({"listing": listing.to_dict(), "snapshot": ENGINE.snapshot()})
+                snapshot = ENGINE.snapshot()
+                _save_game()
+                self._send_json({"listing": listing.to_dict(), "snapshot": snapshot})
                 return
             if path == "/market/buy":
                 item = ENGINE.buy_listing(
                     listing_id=str(payload["listing_id"]),
                     buyer_id=str(payload.get("buyer_id", ENGINE.hero.id)),
                 )
-                self._send_json({"item": item.to_dict(), "snapshot": ENGINE.snapshot()})
+                snapshot = ENGINE.snapshot()
+                _save_game()
+                self._send_json({"item": item.to_dict(), "snapshot": snapshot})
                 return
         except (KeyError, ValueError) as exc:
             self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)

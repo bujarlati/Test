@@ -12,8 +12,10 @@ class DeploymentScriptTests(unittest.TestCase):
         script_path = ROOT / "scripts" / "deploy_package.sh"
         self.assertTrue(script_path.exists(), script_path)
         script = script_path.read_text(encoding="utf-8")
+        raw_script = script_path.read_bytes()
 
         self.assertTrue(script.startswith("#!/usr/bin/env bash"))
+        self.assertNotIn(b"\r\n", raw_script)
         self.assertIn('DEFAULT_TARGET="/opt/idle-game"', script)
         self.assertIn('DEFAULT_SERVICE="idle-game"', script)
         self.assertIn("systemctl stop", script)
@@ -22,6 +24,11 @@ class DeploymentScriptTests(unittest.TestCase):
         self.assertIn("tar -xzf", script)
         self.assertIn("unzip -q", script)
         self.assertNotIn("rm -rf \"$TARGET\"", script)
+
+    def test_shell_scripts_are_archived_with_lf_line_endings(self) -> None:
+        attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+
+        self.assertIn("*.sh text eol=lf", attributes)
 
     def test_deployment_docs_reference_package_script(self) -> None:
         docs = (ROOT / "docs" / "deployment.md").read_text(encoding="utf-8")

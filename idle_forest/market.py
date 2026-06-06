@@ -68,6 +68,19 @@ class Market:
         listing.item.owner_id = buyer_id
         return listing.item
 
+    def cancel(self, listing_id: str, seller_id: str, current_tick: int) -> Equipment:
+        listing = self.get_listing(listing_id)
+        if not listing.active:
+            raise ValueError("listing is not active")
+        if seller_id != listing.seller_id:
+            raise PermissionError("only seller can cancel listing")
+
+        listing.active = False
+        listing.buyer_id = None
+        listing.sold_tick = current_tick
+        listing.item.owner_id = seller_id
+        return listing.item
+
     def get_listing(self, listing_id: str) -> MarketListing:
         listing = self._listings.get(listing_id)
         if listing is None:

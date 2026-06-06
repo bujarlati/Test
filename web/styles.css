@@ -54,6 +54,7 @@ button.muted {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow-y: auto;
   padding: 18px;
   background:
     linear-gradient(rgba(9, 15, 13, 0.82), rgba(9, 15, 13, 0.9)),
@@ -804,74 +805,117 @@ h2 {
 }
 
 .gear-slot-helmet .gear-core {
-  left: 8px;
-  top: 8px;
-  width: 18px;
-  height: 14px;
-  border-radius: 12px 12px 5px 5px;
+  left: 6px;
+  top: 10px;
+  width: 22px;
+  height: 10px;
+  border: 3px solid var(--gear-primary);
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 0 11px color-mix(in srgb, var(--gear-glow), transparent 32%);
 }
 
 .gear-slot-helmet .gear-edge {
-  left: 7px;
-  top: 18px;
-  width: 20px;
-  height: 5px;
-  border-top: 3px solid var(--gear-accent);
+  left: 15px;
+  top: 4px;
+  width: 4px;
+  height: 8px;
+  border: 0;
+  background: var(--gear-glow);
+  box-shadow:
+    -8px 5px 0 color-mix(in srgb, var(--gear-glow), transparent 24%),
+    8px 5px 0 color-mix(in srgb, var(--gear-glow), transparent 24%);
 }
 
 .gear-slot-armor .gear-core {
-  left: 9px;
-  top: 7px;
-  width: 16px;
-  height: 22px;
-  clip-path: polygon(16% 0, 84% 0, 100% 32%, 76% 100%, 24% 100%, 0 32%);
+  left: 3px;
+  top: 8px;
+  width: 28px;
+  height: 20px;
+  clip-path: polygon(50% 18%, 86% 0, 100% 45%, 70% 88%, 50% 58%, 30% 88%, 0 45%, 14% 0);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--gear-glow), transparent 44%);
 }
 
 .gear-slot-armor .gear-edge {
   left: 16px;
-  top: 8px;
-  width: 1px;
-  height: 20px;
+  top: 13px;
+  width: 2px;
+  height: 12px;
   border-left: 2px solid var(--gear-accent);
+  box-shadow:
+    -8px -2px 0 -1px var(--gear-accent),
+    8px -2px 0 -1px var(--gear-accent);
 }
 
 .gear-slot-boots .gear-core {
-  left: 8px;
-  top: 18px;
-  width: 20px;
-  height: 8px;
-  border-radius: 7px 4px 4px 7px;
-  transform: skewX(-18deg);
+  left: 5px;
+  top: 14px;
+  width: 24px;
+  height: 12px;
+  border: 3px solid var(--gear-primary);
+  border-radius: 50%;
+  background: transparent;
+  transform: none;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--gear-glow), transparent 38%);
 }
 
 .gear-slot-boots .gear-edge {
-  left: 11px;
-  top: 10px;
-  width: 13px;
-  height: 12px;
-  border-left: 3px solid var(--gear-accent);
-  transform: rotate(-18deg);
-}
-
-.gear-slot-ring .gear-core {
-  left: 8px;
-  top: 8px;
-  width: 18px;
-  height: 18px;
-  border: 5px solid var(--gear-primary);
+  left: 10px;
+  top: 18px;
+  width: 14px;
+  height: 4px;
+  border: 0;
+  border-top: 2px solid var(--gear-accent);
+  border-bottom: 2px solid var(--gear-accent);
   border-radius: 50%;
-  background: transparent;
+  transform: none;
 }
 
-.gear-slot-ring .gear-edge {
-  left: 15px;
-  top: 5px;
-  width: 6px;
-  height: 6px;
+.gear-slot-ring-pet .gear-core {
+  left: 7px;
+  top: 11px;
+  width: 20px;
+  height: 17px;
+  border: 2px solid var(--gear-accent);
+  border-radius: 50% 50% 45% 45%;
+  background:
+    radial-gradient(circle at 36% 42%, #101817 0 2px, transparent 2px),
+    radial-gradient(circle at 64% 42%, #101817 0 2px, transparent 2px),
+    var(--gear-primary);
+  box-shadow: 0 0 11px color-mix(in srgb, var(--gear-glow), transparent 38%);
+}
+
+.gear-slot-ring-pet .gear-core::before,
+.gear-slot-ring-pet .gear-core::after {
+  position: absolute;
+  top: -7px;
+  width: 9px;
+  height: 10px;
+  border-radius: 60% 60% 35% 35%;
+  background: var(--gear-accent);
+  content: "";
+}
+
+.gear-slot-ring-pet .gear-core::before {
+  left: 1px;
+  transform: rotate(-22deg);
+}
+
+.gear-slot-ring-pet .gear-core::after {
+  right: 1px;
+  transform: rotate(22deg);
+}
+
+.gear-slot-ring-pet .gear-edge {
+  left: 4px;
+  top: 18px;
+  width: 9px;
+  height: 12px;
   border: 0;
   border-radius: 50%;
-  background: var(--gear-glow);
-  box-shadow: 0 0 10px var(--gear-glow);
+  background: color-mix(in srgb, var(--gear-glow), var(--gear-primary) 35%);
+  transform: rotate(-36deg);
+  box-shadow: 17px -13px 0 -4px var(--gear-glow);
 }
 
 .score,
@@ -978,6 +1022,15 @@ h2 {
 
   .profile-preview {
     min-height: 220px;
+  }
+
+  .profile-gate {
+    align-items: flex-start;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .profile-card {
+    max-height: none;
   }
 
   .character-slot {

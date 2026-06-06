@@ -12,6 +12,7 @@ import threading
 import unittest
 
 from idle_forest import GameEngine
+from idle_forest.content import generate_equipment
 from idle_forest.models import TalentTier
 from idle_forest.talents import TALENT_CATALOG
 
@@ -89,6 +90,124 @@ class ServerAccountTests(unittest.TestCase):
         self.assertEqual(len(account["characters"]), 2)
         self.assertEqual([character["slot_index"] for character in account["characters"]], [0, 1])
 
+    def test_first_talent_rolls_are_not_reused_between_accounts(self) -> None:
+        first = self._post("/account/register", {"username": "storm", "password": "forest-pass"})
+        second = self._post("/account/register", {"username": "ember", "password": "forest-pass"})
+
+        first_roll = self._post(
+            "/profile/roll",
+            {"name": "Astra", "gender": "female"},
+            token=first["session_token"],
+        )
+        second_roll = self._post(
+            "/profile/roll",
+            {"name": "Borin", "gender": "male"},
+            token=second["session_token"],
+        )
+
+        self.assertNotEqual(
+            [talent["id"] for talent in first_roll["talents"]],
+            [talent["id"] for talent in second_roll["talents"]],
+        )
+
+    def test_market_listing_is_visible_and_buyable_by_another_account(self) -> None:
+        seller = self._post("/account/register", {"username": "seller", "password": "forest-pass"})
+        buyer = self._post("/account/register", {"username": "buyer", "password": "forest-pass"})
+        seller_character = self._create_character(seller["session_token"], "Seller", "male")
+        buyer_character = self._create_character(buyer["session_token"], "Buyer", "female")
+        seller_id = seller_character["character"]["character_id"]
+
+        runtime = self.server_module.CHARACTER_RUNTIMES[seller_id]
+        item = generate_equipment(level=3, rng=runtime.engine.rng)
+        item.owner_id = seller_id
+        runtime.engine.hero.inventory.append(item)
+
+        listed = self._post(
+            "/market/list",
+            {"item_id": item.id, "price": 25},
+            token=seller["session_token"],
+        )
+        buyer_before = self._get("/snapshot", token=buyer["session_token"])
+        bought = self._post(
+            "/market/buy",
+            {"listing_id": listed["listing"]["id"]},
+            token=buyer["session_token"],
+        )
+        buyer_after = bought["snapshot"]
+        seller_after = self._get("/snapshot", token=seller["session_token"])
+
+        self.assertEqual(buyer_character["character"]["character_id"], buyer_after["hero"]["id"])
+        self.assertIn(
+            listed["listing"]["id"],
+            [listing["id"] for listing in buyer_before["market"]["active"]],
+        )
+        self.assertIn(item.id, [inventory_item["id"] for inventory_item in buyer_after["hero"]["inventory"]])
+        self.assertNotIn(
+            listed["listing"]["id"],
+            [listing["id"] for listing in buyer_after["market"]["active"]],
+        )
+        self.assertEqual(seller_after["hero"]["gold"], seller_character["snapshot"]["hero"]["gold"] + 25)
+
+    def test_market_listing_can_be_canceled_by_seller(self) -> None:
+        seller = self._post("/account/register", {"username": "cancel", "password": "forest-pass"})
+        seller_character = self._create_character(seller["session_token"], "Seller", "male")
+        seller_id = seller_character["character"]["character_id"]
+
+        runtime = self.server_module.CHARACTER_RUNTIMES[seller_id]
+        item = generate_equipment(level=4, rng=runtime.engine.rng)
+        item.owner_id = seller_id
+        runtime.engine.hero.inventory.append(item)
+
+        listed = self._post(
+            "/market/list",
+            {"item_id": item.id, "price": 31},
+            token=seller["session_token"],
+        )
+        canceled = self._post(
+            "/market/cancel",
+            {"listing_id": listed["listing"]["id"]},
+            token=seller["session_token"],
+        )
+        snapshot = canceled["snapshot"]
+
+        self.assertEqual(canceled["item"]["id"], item.id)
+        self.assertIn(item.id, [inventory_item["id"] for inventory_item in snapshot["hero"]["inventory"]])
+        self.assertNotIn(
+            listed["listing"]["id"],
+            [listing["id"] for listing in snapshot["market"]["active"]],
+        )
+
+    def test_market_listing_cannot_be_canceled_by_other_account(self) -> None:
+        seller = self._post("/account/register", {"username": "seller2", "password": "forest-pass"})
+        buyer = self._post("/account/register", {"username": "buyer2", "password": "forest-pass"})
+        seller_character = self._create_character(seller["session_token"], "Seller", "male")
+        self._create_character(buyer["session_token"], "Buyer", "female")
+        seller_id = seller_character["character"]["character_id"]
+
+        runtime = self.server_module.CHARACTER_RUNTIMES[seller_id]
+        item = generate_equipment(level=4, rng=runtime.engine.rng)
+        item.owner_id = seller_id
+        runtime.engine.hero.inventory.append(item)
+
+        listed = self._post(
+            "/market/list",
+            {"item_id": item.id, "price": 31},
+            token=seller["session_token"],
+        )
+        error = self._post_error(
+            "/market/cancel",
+            {"listing_id": listed["listing"]["id"]},
+            token=buyer["session_token"],
+        )
+        seller_after = self._get("/snapshot", token=seller["session_token"])
+
+        self.assertEqual(error["status"], 401)
+        self.assertIn("seller", error["body"]["error"])
+        self.assertIn(
+            listed["listing"]["id"],
+            [listing["id"] for listing in seller_after["market"]["active"]],
+        )
+
     def test_register_migrates_existing_local_save_into_first_character(self) -> None:
         talents = TALENT_CATALOG[TalentTier.COMMON][:3]
         engine = GameEngine(
@@ -118,11 +237,32 @@ class ServerAccountTests(unittest.TestCase):
         self.assertEqual(snapshot["hero"]["name"], "Legacy")
         self.assertEqual(snapshot["hero"]["gold"], 555)
 
+    def test_json_response_ignores_client_disconnect_during_write(self) -> None:
+        handler = object.__new__(self.server_module.IdleForestHandler)
+        calls: list[tuple] = []
+
+        class AbortedWriter:
+            def write(self, body: bytes) -> None:
+                raise ConnectionAbortedError("client closed")
+
+        handler.wfile = AbortedWriter()
+        handler.send_response = lambda status: calls.append(("response", status))
+        handler.send_header = lambda name, value: calls.append(("header", name, value))
+        handler.end_headers = lambda: calls.append(("end",))
+        handler._send_cors_headers = lambda: calls.append(("cors",))
+
+        handler._send_json({"ok": True})
+
+        self.assertIn(("response", self.server_module.HTTPStatus.OK), calls)
+
     def _get(self, path: str, token: str | None = None) -> dict:
         return self._request("GET", path, None, token)
 
     def _post(self, path: str, body: dict, token: str | None = None) -> dict:
         return self._request("POST", path, body, token)
+
+    def _post_error(self, path: str, body: dict, token: str | None = None) -> dict:
+        return self._request("POST", path, body, token, allow_error=True)
 
     def _create_character(self, token: str, name: str, gender: str) -> dict:
         rolled = self._post("/profile/roll", {"name": name, "gender": gender}, token=token)
@@ -136,7 +276,14 @@ class ServerAccountTests(unittest.TestCase):
             token=token,
         )
 
-    def _request(self, method: str, path: str, body: dict | None, token: str | None) -> dict:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        body: dict | None,
+        token: str | None,
+        allow_error: bool = False,
+    ) -> dict:
         payload = json.dumps(body).encode("utf-8") if body is not None else None
         headers = {"Content-Type": "application/json"}
         if token is not None:
@@ -148,6 +295,8 @@ class ServerAccountTests(unittest.TestCase):
             data = json.loads(response.read().decode("utf-8"))
         finally:
             connection.close()
+        if allow_error:
+            return {"status": response.status, "body": data}
         if response.status >= 400:
             self.fail(f"{method} {path} failed with {response.status}: {data}")
         return data

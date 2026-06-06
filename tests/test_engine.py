@@ -56,6 +56,22 @@ class GameEngineTests(unittest.TestCase):
         )
         self.assertEqual(hero_entity["talent_effects"], snapshot["hero"]["talent_effects"])
 
+    def test_ring_equipment_appearance_is_a_pet_companion(self) -> None:
+        item = Equipment(
+            id="pet_ring",
+            name="Lucky Pet",
+            slot=EquipmentSlot.RING,
+            rarity=Rarity.PURPLE,
+            level=5,
+            defense=3,
+        )
+
+        appearance = item.appearance()
+
+        self.assertEqual(appearance["slot"], "ring")
+        self.assertIn("pet", appearance["model"])
+        self.assertEqual(appearance["icon_shape"], "pet")
+
     def test_loot_event_exposes_item_name_and_appearance_for_scene_popups(self) -> None:
         engine = GameEngine(seed=34)
         item = Equipment(

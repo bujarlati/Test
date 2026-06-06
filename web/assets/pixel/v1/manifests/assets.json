@@ -1,0 +1,421 @@
+{
+  "version": "pixel-v1",
+  "tileSize": 32,
+  "heroes": {
+    "male_assassin": {
+      "image": "/web/assets/pixel/v1/heroes/male/assassin_sample.png",
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "drawWidth": 116,
+      "drawHeight": 116,
+      "anchors": {
+        "feet": [
+          64,
+          121
+        ],
+        "mainHand": [
+          106,
+          58
+        ],
+        "offHand": [
+          84,
+          62
+        ],
+        "ringHand": [
+          43,
+          70
+        ],
+        "head": [
+          64,
+          35
+        ],
+        "torso": [
+          63,
+          71
+        ],
+        "halo": [
+          66,
+          7
+        ],
+        "back": [
+          58,
+          34
+        ],
+        "feetCenter": [
+          64,
+          126
+        ]
+      },
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 82
+        },
+        "attack_unarmed": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 68
+        },
+        "attack_blade": {
+          "row": 3,
+          "frames": 8,
+          "frameMs": 64
+        },
+        "attack_dual": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 60
+        },
+        "attack_bow": {
+          "row": 5,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "attack_spear": {
+          "row": 6,
+          "frames": 8,
+          "frameMs": 72
+        },
+        "attack_heavy": {
+          "row": 7,
+          "frames": 8,
+          "frameMs": 82
+        },
+        "hurt": {
+          "row": 8,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 9,
+          "frames": 8,
+          "frameMs": 110
+        },
+        "revive": {
+          "row": 10,
+          "frames": 8,
+          "frameMs": 95
+        }
+      }
+    },
+    "male_base": {
+      "image": "/web/assets/pixel/v1/heroes/male/base.png",
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "drawWidth": 88,
+      "drawHeight": 88,
+      "anchors": {
+        "feet": [
+          48,
+          84
+        ],
+        "mainHand": [
+          62,
+          50
+        ],
+        "offHand": [
+          36,
+          51
+        ],
+        "head": [
+          49,
+          29
+        ],
+        "torso": [
+          48,
+          50
+        ]
+      },
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 82
+        },
+        "attack_unarmed": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 68
+        },
+        "attack_blade": {
+          "row": 3,
+          "frames": 8,
+          "frameMs": 64
+        },
+        "attack_dual": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 60
+        },
+        "attack_bow": {
+          "row": 5,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "attack_spear": {
+          "row": 6,
+          "frames": 8,
+          "frameMs": 72
+        },
+        "attack_heavy": {
+          "row": 7,
+          "frames": 8,
+          "frameMs": 82
+        },
+        "hurt": {
+          "row": 8,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 9,
+          "frames": 8,
+          "frameMs": 110
+        },
+        "revive": {
+          "row": 10,
+          "frames": 8,
+          "frameMs": 95
+        }
+      }
+    },
+    "female_base": {
+      "image": "/web/assets/pixel/v1/heroes/female/base.png",
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "drawWidth": 88,
+      "drawHeight": 88,
+      "anchors": {
+        "feet": [
+          48,
+          84
+        ],
+        "mainHand": [
+          62,
+          50
+        ],
+        "offHand": [
+          36,
+          51
+        ],
+        "head": [
+          49,
+          29
+        ],
+        "torso": [
+          48,
+          50
+        ]
+      },
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 82
+        },
+        "attack_unarmed": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 68
+        },
+        "attack_blade": {
+          "row": 3,
+          "frames": 8,
+          "frameMs": 64
+        },
+        "attack_dual": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 60
+        },
+        "attack_bow": {
+          "row": 5,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "attack_spear": {
+          "row": 6,
+          "frames": 8,
+          "frameMs": 72
+        },
+        "attack_heavy": {
+          "row": 7,
+          "frames": 8,
+          "frameMs": 82
+        },
+        "hurt": {
+          "row": 8,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 9,
+          "frames": 8,
+          "frameMs": 110
+        },
+        "revive": {
+          "row": 10,
+          "frames": 8,
+          "frameMs": 95
+        }
+      }
+    }
+  },
+  "equipment": {},
+  "monsters": {
+    "slime": {
+      "image": "/web/assets/pixel/v1/monsters/common/slime.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 70,
+      "drawHeight": 70,
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "thorn": {
+      "image": "/web/assets/pixel/v1/monsters/common/thorn.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 72,
+      "drawHeight": 72,
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "imp": {
+      "image": "/web/assets/pixel/v1/monsters/common/imp.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 70,
+      "drawHeight": 70,
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "forest_boss": {
+      "image": "/web/assets/pixel/v1/monsters/bosses/forest_boss.png",
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "drawWidth": 126,
+      "drawHeight": 126,
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    }
+  },
+  "maps": {},
+  "effects": {}
+}

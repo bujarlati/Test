@@ -38,7 +38,7 @@ SLOT_ICON_SHAPES: dict[EquipmentSlot, str] = {
     EquipmentSlot.HELMET: "crest",
     EquipmentSlot.ARMOR: "chest",
     EquipmentSlot.BOOTS: "step",
-    EquipmentSlot.RING: "halo",
+    EquipmentSlot.RING: "pet",
 }
 
 
@@ -130,7 +130,14 @@ class Equipment:
         elif self.slot == EquipmentSlot.BOOTS:
             model = "winged_boots" if self.attack_speed > 0 or self.hp_regen > 0.18 else "travel_boots"
         elif self.slot == EquipmentSlot.RING:
-            model = "gem_ring" if self.rarity in {Rarity.BLUE, Rarity.PURPLE, Rarity.GOLD, Rarity.RED} else "iron_ring"
+            model = {
+                Rarity.WHITE: "sprout_pet",
+                Rarity.GREEN: "leaf_pet",
+                Rarity.BLUE: "moon_cat_pet",
+                Rarity.PURPLE: "star_bunny_pet",
+                Rarity.GOLD: "spark_fox_pet",
+                Rarity.RED: "ember_fox_pet",
+            }[self.rarity]
 
         return {
             "slot": self.slot.value,

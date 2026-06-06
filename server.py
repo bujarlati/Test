@@ -11,6 +11,7 @@ import json
 import mimetypes
 import os
 import random
+import threading
 import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -166,17 +167,17 @@ class RuntimeState:
         self.engine = engine
 
 
-PROFILE = ProfileSession(seed=11)
+PROFILE = ProfileSession()
 CHARACTER_RUNTIMES: dict[str, RuntimeState] = {}
 CREATION_DRAFTS: dict[str, ProfileSession] = {}
+MARKET_LOCK = threading.RLock()
 
 
 def _engine_from_profile(profile: ProfileSession, hero_id: str = "player_1") -> GameEngine:
     if profile.confirmed is None:
-        return GameEngine(seed=11, hero_id=hero_id)
+        return GameEngine(hero_id=hero_id)
     talent_ids = [str(talent["id"]) for talent in profile.confirmed["talents"]]
     return GameEngine(
-        seed=11,
         hero_id=hero_id,
         hero_name=str(profile.confirmed["name"]),
         hero_gender=str(profile.confirmed["gender"]),
@@ -206,7 +207,7 @@ ENGINE = _load_engine()
 def _runtime_for_character(character_id: str) -> RuntimeState:
     if character_id not in CHARACTER_RUNTIMES:
         loaded = SAVE_STORE.load_character(character_id)
-        profile = ProfileSession(seed=11)
+        profile = ProfileSession()
         profile.load_save(loaded["profile"])
         CHARACTER_RUNTIMES[character_id] = RuntimeState(profile=profile, engine=loaded["engine"])
     return CHARACTER_RUNTIMES[character_id]
@@ -214,6 +215,82 @@ def _runtime_for_character(character_id: str) -> RuntimeState:
 
 def _save_character_runtime(character_id: str, runtime: RuntimeState) -> None:
     SAVE_STORE.save_character(character_id, runtime.profile.to_save(), runtime.engine)
+
+
+def _snapshot_for_character(character_id: str, runtime: RuntimeState) -> dict[str, Any]:
+    snapshot = runtime.engine.snapshot()
+    snapshot["market"] = SAVE_STORE.market_snapshot(character_id)
+    return snapshot
+
+
+def _buy_market_listing(character_id: str, runtime: RuntimeState, listing_id: str) -> tuple[Any, dict[str, Any]]:
+    with MARKET_LOCK:
+        try:
+            item = runtime.engine.buy_listing(listing_id=listing_id, buyer_id=runtime.engine.hero.id)
+        except KeyError:
+            item = _buy_shared_market_listing(character_id, runtime, listing_id)
+        else:
+            _save_character_runtime(character_id, runtime)
+        return item, _snapshot_for_character(character_id, runtime)
+
+
+def _cancel_market_listing(character_id: str, runtime: RuntimeState, listing_id: str) -> tuple[Any, dict[str, Any]]:
+    with MARKET_LOCK:
+        try:
+            item = runtime.engine.cancel_listing(listing_id=listing_id)
+        except KeyError:
+            item = _cancel_shared_market_listing(character_id, runtime, listing_id)
+        else:
+            _save_character_runtime(character_id, runtime)
+        return item, _snapshot_for_character(character_id, runtime)
+
+
+def _cancel_shared_market_listing(character_id: str, runtime: RuntimeState, listing_id: str) -> Any:
+    listing_record = SAVE_STORE.load_market_listing(listing_id)
+    listing = listing_record["listing"]
+    if listing.seller_id != runtime.engine.hero.id:
+        raise PermissionError("only seller can cancel listing")
+    if not listing.active:
+        raise ValueError("listing is not active")
+
+    runtime.engine.market._listings[listing.id] = listing
+    item = runtime.engine.cancel_listing(listing_id)
+    _save_character_runtime(character_id, runtime)
+    return item
+
+
+def _buy_shared_market_listing(character_id: str, runtime: RuntimeState, listing_id: str) -> Any:
+    listing_record = SAVE_STORE.load_market_listing(listing_id)
+    listing = listing_record["listing"]
+    seller_id = listing.seller_id
+    if not listing.active:
+        raise ValueError("listing is not active")
+    if seller_id.startswith("npc_"):
+        raise KeyError(f"listing not found: {listing_id}")
+    if seller_id == runtime.engine.hero.id:
+        raise ValueError("seller cannot buy their own listing")
+    if runtime.engine.hero.gold < listing.price:
+        raise ValueError("not enough gold")
+
+    seller_runtime = _runtime_for_character(seller_id)
+    try:
+        seller_runtime.engine.market.get_listing(listing_id)
+    except KeyError:
+        seller_runtime.engine.market._listings[listing.id] = listing
+
+    item = seller_runtime.engine.buy_listing(listing_id=listing_id, buyer_id=runtime.engine.hero.id)
+    runtime.engine.hero.gold -= listing.price
+    runtime.engine.hero.inventory.append(item)
+    runtime.engine._add_event(
+        "market_buy",
+        f"Bought {item.name} from {seller_id}.",
+        listing_id=listing_id,
+        item_id=item.id,
+        seller_id=seller_id,
+    )
+    _save_character_runtime(seller_id, seller_runtime)
+    _save_character_runtime(character_id, runtime)
+    return item
 
 
 def _new_character_id() -> str:
@@ -261,7 +338,7 @@ class IdleForestHandler(BaseHTTPRequestHandler):
             return
         if path == "/snapshot":
             active = self._active_runtime_or_none()
-            self._send_json(active[2].engine.snapshot() if active is not None else ENGINE.snapshot())
+            self._send_json(_snapshot_for_character(active[1], active[2]) if active is not None else ENGINE.snapshot())
             return
         if path == "/profile":
             active = self._active_runtime_or_none()
@@ -272,7 +349,7 @@ class IdleForestHandler(BaseHTTPRequestHandler):
             return
         if path == "/market":
             active = self._active_runtime_or_none()
-            self._send_json(active[2].engine.market.to_dict() if active is not None else ENGINE.market.to_dict())
+            self._send_json(SAVE_STORE.market_snapshot(active[1]) if active is not None else ENGINE.market.to_dict())
             return
         if path == "/talents":
             self._send_json(
@@ -334,7 +411,7 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                     str(payload["character_id"]),
                 )
                 runtime = _runtime_for_character(str(payload["character_id"]))
-                self._send_json(_account_payload(session) | {"snapshot": runtime.engine.snapshot()})
+                self._send_json(_account_payload(session) | {"snapshot": _snapshot_for_character(str(payload["character_id"]), runtime)})
                 return
             if path == "/characters/delete":
                 session = self._require_session()
@@ -349,8 +426,8 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                 if active is not None:
                     _, character_id, runtime = active
                     runtime.engine = _engine_from_profile(runtime.profile, hero_id=character_id)
-                    snapshot = runtime.engine.snapshot()
                     _save_character_runtime(character_id, runtime)
+                    snapshot = _snapshot_for_character(character_id, runtime)
                     self._send_json(snapshot)
                     return
                 ENGINE = _engine_from_profile(PROFILE)
@@ -363,7 +440,7 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                 if session is not None:
                     draft = CREATION_DRAFTS.setdefault(
                         session["session_token"],
-                        ProfileSession(seed=11),
+                        ProfileSession(),
                     )
                     result = draft.roll(
                         name=str(payload.get("name", "")),
@@ -381,7 +458,7 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                     raise ValueError("talent_ids must be a list")
                 session = self._session_or_none()
                 if session is not None:
-                    draft = CREATION_DRAFTS.get(session["session_token"], ProfileSession(seed=11))
+                    draft = CREATION_DRAFTS.get(session["session_token"], ProfileSession())
                     draft.confirm(
                         name=str(payload.get("name", "")) if "name" in payload else None,
                         gender=str(payload.get("gender", "")) if "gender" in payload else None,
@@ -398,7 +475,7 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                         _account_payload(session)
                         | {
                             "profile": draft.to_dict(),
-                            "snapshot": engine.snapshot(),
+                            "snapshot": _snapshot_for_character(character_id, runtime),
                             "character": character,
                         }
                     )
@@ -429,8 +506,9 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                 if active is not None:
                     _, character_id, runtime = active
                     seconds = float(payload.get("seconds", 1))
-                    snapshot = runtime.engine.advance(seconds)
+                    runtime.engine.advance(seconds)
                     _save_character_runtime(character_id, runtime)
+                    snapshot = _snapshot_for_character(character_id, runtime)
                     self._send_json(snapshot)
                     return
                 seconds = float(payload.get("seconds", 1))
@@ -444,8 +522,8 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                     _, character_id, runtime = active
                     floor = payload.get("floor")
                     rift = runtime.engine.enter_rift(int(floor) if floor is not None else None)
-                    snapshot = runtime.engine.snapshot()
                     _save_character_runtime(character_id, runtime)
+                    snapshot = _snapshot_for_character(character_id, runtime)
                     self._send_json({"rift": rift.to_dict(), "snapshot": snapshot})
                     return
                 floor = payload.get("floor")
@@ -459,8 +537,8 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                 if active is not None:
                     _, character_id, runtime = active
                     runtime.engine.leave_rift()
-                    snapshot = runtime.engine.snapshot()
                     _save_character_runtime(character_id, runtime)
+                    snapshot = _snapshot_for_character(character_id, runtime)
                     self._send_json(snapshot)
                     return
                 ENGINE.leave_rift()
@@ -472,8 +550,9 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                 active = self._active_runtime_or_none()
                 if active is not None:
                     _, character_id, runtime = active
-                    snapshot = runtime.engine.deepen_forest()
+                    runtime.engine.deepen_forest()
                     _save_character_runtime(character_id, runtime)
+                    snapshot = _snapshot_for_character(character_id, runtime)
                     self._send_json(snapshot)
                     return
                 snapshot = ENGINE.deepen_forest()
@@ -484,8 +563,9 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                 active = self._active_runtime_or_none()
                 if active is not None:
                     _, character_id, runtime = active
-                    snapshot = runtime.engine.retreat_forest()
+                    runtime.engine.retreat_forest()
                     _save_character_runtime(character_id, runtime)
+                    snapshot = _snapshot_for_character(character_id, runtime)
                     self._send_json(snapshot)
                     return
                 snapshot = ENGINE.retreat_forest()
@@ -497,8 +577,8 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                 if active is not None:
                     _, character_id, runtime = active
                     equipped = runtime.engine.equip_best_items()
-                    snapshot = runtime.engine.snapshot()
                     _save_character_runtime(character_id, runtime)
+                    snapshot = _snapshot_for_character(character_id, runtime)
                     self._send_json(
                         {
                             "equipped": [item.to_dict() for item in equipped],
@@ -520,10 +600,11 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                 active = self._active_runtime_or_none()
                 engine = active[2].engine if active is not None else ENGINE
                 item = engine.equip_item(item_id=str(payload["item_id"]))
-                snapshot = engine.snapshot()
                 if active is not None:
                     _save_character_runtime(active[1], active[2])
+                    snapshot = _snapshot_for_character(active[1], active[2])
                 else:
+                    snapshot = engine.snapshot()
                     _save_game()
                 self._send_json({"item": item.to_dict(), "snapshot": snapshot})
                 return
@@ -531,10 +612,11 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                 active = self._active_runtime_or_none()
                 engine = active[2].engine if active is not None else ENGINE
                 result = engine.evolve_talent(talent_id=str(payload["talent_id"]))
-                snapshot = engine.snapshot()
                 if active is not None:
                     _save_character_runtime(active[1], active[2])
+                    snapshot = _snapshot_for_character(active[1], active[2])
                 else:
+                    snapshot = engine.snapshot()
                     _save_game()
                 self._send_json({"talent": result, "snapshot": snapshot})
                 return
@@ -545,24 +627,42 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                     item_id=str(payload["item_id"]),
                     price=int(payload["price"]),
                 )
-                snapshot = engine.snapshot()
                 if active is not None:
                     _save_character_runtime(active[1], active[2])
+                    snapshot = _snapshot_for_character(active[1], active[2])
                 else:
+                    snapshot = engine.snapshot()
                     _save_game()
                 self._send_json({"listing": listing.to_dict(), "snapshot": snapshot})
                 return
             if path == "/market/buy":
                 active = self._active_runtime_or_none()
-                engine = active[2].engine if active is not None else ENGINE
-                item = engine.buy_listing(
-                    listing_id=str(payload["listing_id"]),
-                    buyer_id=str(payload.get("buyer_id", engine.hero.id)),
-                )
-                snapshot = engine.snapshot()
                 if active is not None:
-                    _save_character_runtime(active[1], active[2])
+                    item, snapshot = _buy_market_listing(
+                        active[1],
+                        active[2],
+                        str(payload["listing_id"]),
+                    )
                 else:
+                    item = ENGINE.buy_listing(
+                        listing_id=str(payload["listing_id"]),
+                        buyer_id=str(payload.get("buyer_id", ENGINE.hero.id)),
+                    )
+                    snapshot = ENGINE.snapshot()
+                    _save_game()
+                self._send_json({"item": item.to_dict(), "snapshot": snapshot})
+                return
+            if path == "/market/cancel":
+                active = self._active_runtime_or_none()
+                if active is not None:
+                    item, snapshot = _cancel_market_listing(
+                        active[1],
+                        active[2],
+                        str(payload["listing_id"]),
+                    )
+                else:
+                    item = ENGINE.cancel_listing(str(payload["listing_id"]))
+                    snapshot = ENGINE.snapshot()
                     _save_game()
                 self._send_json({"item": item.to_dict(), "snapshot": snapshot})
                 return
@@ -631,7 +731,10 @@ class IdleForestHandler(BaseHTTPRequestHandler):
         self._send_cors_headers()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            return
 
     def _send_static(self, requested_path: Path) -> None:
         try:

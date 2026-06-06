@@ -3,7 +3,7 @@ const SLOT_LABELS = {
   helmet: '头盔',
   armor: '护甲',
   boots: '鞋子',
-  ring: '戒指'
+  ring: '\u6212\u6307\u5ba0\u7269'
 }
 
 const RARITY_LABELS = {
@@ -56,6 +56,7 @@ const VISUAL_SNAP_DISTANCE = 96
 const CAMERA_DAMPING = 18
 const LOOT_FLOAT_DURATION_MS = 2400
 const ATTACK_EFFECT_DURATION_MS = 520
+const PIXEL_ASSET_VERSION = 'assassin-v12'
 const DEFAULT_SETTINGS = {
   paused: false,
   volume: 0.7,
@@ -110,6 +111,8 @@ const UI_TEXT = {
     mine: '我的挂单',
     buy: '购买',
     buying: '购买中',
+    cancelListing: '取消挂售',
+    cancelingListing: '取消中',
     score: '评分',
     priceGold: '金',
     specialSet: '特殊套装',
@@ -187,6 +190,8 @@ const UI_TEXT = {
     mine: 'My listing',
     buy: 'Buy',
     buying: 'Buying',
+    cancelListing: 'Cancel Listing',
+    cancelingListing: 'Canceling',
     score: 'Score',
     priceGold: 'g',
     specialSet: 'Special Set',
@@ -237,6 +242,7 @@ const state = {
   inventoryRenderSignature: '',
   marketRenderSignature: '',
   marketActionInFlightIds: new Set(),
+  talentEvolutionInFlight: false,
   lastRenderAt: 0,
   loadedAssets: 0,
   lootFloaters: [],
@@ -288,7 +294,111 @@ const ASSET_PATHS = {
   blockStone: '/web/assets/sprites/block_stone.png',
   brickGrey: '/web/assets/sprites/brick_grey.png',
   bush: '/web/assets/sprites/bush.png',
-  rock: '/web/assets/sprites/rock.png'
+  rock: '/web/assets/sprites/rock.png',
+  pixelHeroMaleAssassin: `/web/assets/pixel/v1/heroes/male/assassin_sample.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelHeroMale: `/web/assets/pixel/v1/heroes/male/base.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelHeroFemale: `/web/assets/pixel/v1/heroes/female/base.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelSlime: `/web/assets/pixel/v1/monsters/common/slime.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelThorn: `/web/assets/pixel/v1/monsters/common/thorn.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelImp: `/web/assets/pixel/v1/monsters/common/imp.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelForestBoss: `/web/assets/pixel/v1/monsters/bosses/forest_boss.png?v=${PIXEL_ASSET_VERSION}`
+}
+
+const PIXEL_HERO_ACTIONS = {
+  idle: { row: 0, frames: 8, frameMs: 120 },
+  walk: { row: 1, frames: 8, frameMs: 82 },
+  attack_unarmed: { row: 2, frames: 8, frameMs: 68 },
+  attack_blade: { row: 3, frames: 8, frameMs: 64 },
+  attack_dual: { row: 4, frames: 8, frameMs: 60 },
+  attack_bow: { row: 5, frames: 8, frameMs: 76 },
+  attack_spear: { row: 6, frames: 8, frameMs: 72 },
+  attack_heavy: { row: 7, frames: 8, frameMs: 82 },
+  hurt: { row: 8, frames: 4, frameMs: 90 },
+  death: { row: 9, frames: 8, frameMs: 110 },
+  revive: { row: 10, frames: 8, frameMs: 95 }
+}
+
+const PIXEL_MONSTER_ACTIONS = {
+  idle: { row: 0, frames: 8, frameMs: 120 },
+  walk: { row: 1, frames: 8, frameMs: 92 },
+  attack: { row: 2, frames: 8, frameMs: 76 },
+  hurt: { row: 3, frames: 4, frameMs: 90 },
+  death: { row: 4, frames: 8, frameMs: 110 }
+}
+
+const ASSASSIN_EQUIPMENT_ANCHORS = {
+  mainHand: [106, 58],
+  offHand: [84, 62],
+  ringHand: [43, 70],
+  head: [64, 35],
+  torso: [63, 71],
+  halo: [66, 7],
+  back: [58, 34],
+  feetCenter: [64, 126]
+}
+
+const PIXEL_SPRITES = {
+  heroes: {
+    male_assassin: {
+      key: 'pixelHeroMaleAssassin',
+      frameWidth: 128,
+      frameHeight: 128,
+      drawWidth: 116,
+      drawHeight: 116,
+      anchors: ASSASSIN_EQUIPMENT_ANCHORS,
+      actions: PIXEL_HERO_ACTIONS
+    },
+    male_base: {
+      key: 'pixelHeroMale',
+      frameWidth: 96,
+      frameHeight: 96,
+      drawWidth: 88,
+      drawHeight: 88,
+      actions: PIXEL_HERO_ACTIONS
+    },
+    female_base: {
+      key: 'pixelHeroFemale',
+      frameWidth: 96,
+      frameHeight: 96,
+      drawWidth: 88,
+      drawHeight: 88,
+      actions: PIXEL_HERO_ACTIONS
+    }
+  },
+  monsters: {
+    slime: {
+      key: 'pixelSlime',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 70,
+      drawHeight: 70,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    thorn: {
+      key: 'pixelThorn',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 72,
+      drawHeight: 72,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    imp: {
+      key: 'pixelImp',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 70,
+      drawHeight: 70,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    forest_boss: {
+      key: 'pixelForestBoss',
+      frameWidth: 128,
+      frameHeight: 128,
+      drawWidth: 126,
+      drawHeight: 126,
+      actions: PIXEL_MONSTER_ACTIONS
+    }
+  }
 }
 
 const assetImages = {}
@@ -1169,7 +1279,7 @@ function renderTalents(talents, scrolls, talentMeta) {
   els.talentList.innerHTML = talents
     .map((talent) => {
       const locked = talent.tier === 'mythic'
-      const disabled = scrolls <= 0 || locked
+      const disabled = scrolls <= 0 || locked || state.talentEvolutionInFlight
       return `
         <article class="talent tier-${talent.tier}">
           <div class="item-main">
@@ -1184,6 +1294,28 @@ function renderTalents(talents, scrolls, talentMeta) {
       `
     })
     .join('')
+}
+
+function renderCurrentTalents() {
+  const snapshot = state.snapshot
+  if (!snapshot || !snapshot.hero) {
+    return
+  }
+  renderTalents(snapshot.hero.talents || [], snapshot.hero.talent_scrolls || 0, snapshot.talent || {})
+}
+
+function evolveTalent(button) {
+  if (state.talentEvolutionInFlight) {
+    return
+  }
+  state.talentEvolutionInFlight = true
+  button.disabled = true
+  renderCurrentTalents()
+  postAction('/talent/evolve', { talent_id: button.dataset.id }, t('evolve'))
+    .finally(() => {
+      state.talentEvolutionInFlight = false
+      renderCurrentTalents()
+    })
 }
 
 function renderEquipmentSlots(slots, equipped) {
@@ -1302,6 +1434,9 @@ function renderMarket(listings, heroId, force = true) {
       const item = listing.item
       const own = listing.seller_id === heroId
       const pending = state.marketActionInFlightIds.has(listing.id)
+      const actionButton = own
+        ? `<button class="muted" data-action="cancel-listing" data-id="${listing.id}" ${pending ? 'disabled' : ''}>${pending ? t('cancelingListing') : t('cancelListing')}</button>`
+        : `<button data-action="buy" data-id="${listing.id}" ${pending ? 'disabled' : ''}>${pending ? t('buying') : t('buy')}</button>`
       return `
         <article class="item rarity-${item.rarity}">
           <div class="item-visual">
@@ -1314,7 +1449,7 @@ function renderMarket(listings, heroId, force = true) {
               <div class="item-sub">${own ? t('mine') : listing.seller_id} · ${slotLabel(item.slot)} · ${t('score')} ${item.score}</div>
               ${specialLine(item)}
               <div class="item-actions">
-                <button data-action="buy" data-id="${listing.id}" ${own || pending ? 'disabled' : ''}>${pending ? t('buying') : t('buy')}</button>
+                ${actionButton}
               </div>
             </div>
           </div>
@@ -1476,7 +1611,7 @@ function equipmentPreviewHtml(item) {
     `--gear-glow:${safeColor(palette.glow, '#d8dde4')}`
   ].join(';')
   const model = safeClassName(appearance.model)
-  const slot = safeClassName(item.slot || appearance.slot)
+  const slot = safeClassName(item.slot === 'ring' ? 'ring-pet' : item.slot || appearance.slot)
   return `
     <span class="gear-preview gear-slot-${slot} gear-model-${model}${appearance.aura ? ' gear-aura' : ''}" style="${style}" aria-hidden="true">
       <span class="gear-core"></span>
@@ -1487,16 +1622,39 @@ function equipmentPreviewHtml(item) {
 
 function equipmentAppearance(item) {
   if (item && item.appearance) {
+    if (item.slot === 'ring') {
+      return {
+        ...item.appearance,
+        slot: 'ring',
+        model: ringPetModel(item, item.appearance),
+        icon_shape: 'pet'
+      }
+    }
     return item.appearance
   }
   const palette = FALLBACK_GEAR_PALETTES[(item && item.rarity) || 'white'] || FALLBACK_GEAR_PALETTES.white
   return {
     slot: (item && item.slot) || 'weapon',
-    model: (item && item.weapon_type) || (item && item.slot) || 'blade',
+    model: item && item.slot === 'ring' ? ringPetModel(item) : (item && item.weapon_type) || (item && item.slot) || 'blade',
     palette,
     aura: item && ['purple', 'gold', 'red'].includes(item.rarity),
-    icon_shape: 'slash'
+    icon_shape: item && item.slot === 'ring' ? 'pet' : 'slash'
   }
+}
+
+function ringPetModel(item, appearance = {}) {
+  const existing = String((appearance && appearance.model) || '')
+  if (existing.includes('pet')) {
+    return existing
+  }
+  return {
+    white: 'sprout_pet',
+    green: 'leaf_pet',
+    blue: 'moon_cat_pet',
+    purple: 'star_bunny_pet',
+    gold: 'spark_fox_pet',
+    red: 'ember_fox_pet'
+  }[(item && item.rarity) || 'white'] || 'sprout_pet'
 }
 
 function safeColor(value, fallback) {
@@ -1605,7 +1763,7 @@ function slotLabel(slot) {
       helmet: 'Helmet',
       armor: 'Armor',
       boots: 'Boots',
-      ring: 'Ring'
+      ring: 'Ring Pet'
     }[slot] || slot
   }
   return SLOT_LABELS[slot] || slot
@@ -1685,6 +1843,59 @@ function drawBlendedSpriteBottom(a, b, centerX, bottomY, width, height, flip = f
   const amount = smoothstep(animationPhase(speed))
   const key = amount < 0.5 ? a : b
   return drawSpriteBottom(key, centerX, bottomY, width, height, flip)
+}
+
+function spriteSheetFrameInfo(sprite, actionName) {
+  if (!sprite || !sprite.actions) {
+    return null
+  }
+  const action = sprite.actions[actionName] || sprite.actions.idle
+  if (!action) {
+    return null
+  }
+  const frameCount = Math.max(1, Number(action.frames || 1))
+  const frameMs = Math.max(1, Number(action.frameMs || 100))
+  return {
+    action,
+    frame: Math.floor((state.lastRenderAt || 0) / frameMs) % frameCount,
+    frameCount,
+    frameMs
+  }
+}
+
+function drawSpriteSheetFrameBottom(sprite, actionName, centerX, bottomY, flip = false) {
+  if (!sprite || !sprite.key) {
+    return false
+  }
+  const image = assetImage(sprite.key)
+  if (!image) {
+    return false
+  }
+  const frameInfo = spriteSheetFrameInfo(sprite, actionName)
+  if (!frameInfo) {
+    return false
+  }
+  const action = frameInfo.action
+  const frameWidth = Number(sprite.frameWidth || image.naturalWidth)
+  const frameHeight = Number(sprite.frameHeight || image.naturalHeight)
+  const frame = frameInfo.frame
+  const sourceX = frame * frameWidth
+  const sourceY = Number(action.row || 0) * frameHeight
+  const drawWidth = Number(sprite.drawWidth || frameWidth)
+  const drawHeight = Number(sprite.drawHeight || frameHeight)
+  const x = centerX - drawWidth / 2
+  const y = bottomY - drawHeight
+  ctx.save()
+  ctx.imageSmoothingEnabled = false
+  if (flip) {
+    ctx.translate(x + drawWidth, y)
+    ctx.scale(-1, 1)
+    ctx.drawImage(image, sourceX, sourceY, frameWidth, frameHeight, 0, 0, drawWidth, drawHeight)
+  } else {
+    ctx.drawImage(image, sourceX, sourceY, frameWidth, frameHeight, x, y, drawWidth, drawHeight)
+  }
+  ctx.restore()
+  return true
 }
 
 function drawCover(key, x, y, width, height, alpha = 1) {
@@ -2335,6 +2546,224 @@ function monsterSpriteKey(entity) {
   return animatedFrame('slimeWalkA', 'slimeWalkB', 290)
 }
 
+function heroWeaponProfile(entity) {
+  const equipped = (entity && entity.equipped) || {}
+  const main = equipped.weapon || (entity && entity.weapon) || null
+  const offhand = (entity && entity.offhand_weapon) || equipped.offhand_weapon || null
+  const rawType = String((main && main.weapon_type) || 'unarmed').toLowerCase()
+  const type = rawType.includes('bow')
+    ? 'bow'
+    : rawType.includes('spear') || rawType.includes('pole') || rawType.includes('staff')
+      ? 'spear'
+      : rawType.includes('axe') || rawType.includes('hammer') || rawType.includes('heavy') || rawType.includes('great')
+        ? 'heavy'
+        : rawType.includes('dual') || rawType.includes('dagger_pair')
+          ? 'dual'
+          : rawType.includes('dagger') || rawType.includes('blade') || rawType.includes('sword')
+            ? 'blade'
+            : rawType
+  return {
+    main,
+    offhand,
+    type,
+    dual: Boolean(offhand) || type === 'dual'
+  }
+}
+
+function weaponAnimationType(profile) {
+  if (!profile || !profile.main) return 'attack_unarmed'
+  if (profile.dual) return 'attack_dual'
+  if (profile.type === 'bow') return 'attack_bow'
+  if (profile.type === 'spear') return 'attack_spear'
+  if (profile.type === 'heavy') return 'attack_heavy'
+  return 'attack_blade'
+}
+
+function pixelHeroAction(entity, weaponProfile = heroWeaponProfile(entity)) {
+  if (!entity) return 'idle'
+  if (entity.state === 'reviving') return 'revive'
+  if (Number(entity.hp || 0) <= 0) return 'death'
+  if (entity.state === 'combat') return weaponAnimationType(weaponProfile)
+  if (entity.state === 'walk' || entity.state === 'approach') return 'walk'
+  return 'idle'
+}
+
+function pixelHeroRenderInfo(skeleton, entity) {
+  const key = entity.gender === 'female' ? 'female_base' : 'male_assassin'
+  const sprite = PIXEL_SPRITES.heroes[key]
+  if (!sprite) {
+    return false
+  }
+  const weaponProfile = heroWeaponProfile(entity)
+  const actionName = pixelHeroAction(entity, weaponProfile)
+  const frameInfo = spriteSheetFrameInfo(sprite, actionName)
+  const bottomY = Math.max(skeleton.leftFoot.y, skeleton.rightFoot.y) + 4
+  return {
+    sprite,
+    actionName,
+    centerX: skeleton.hips.x + 1,
+    bottomY,
+    frame: frameInfo ? frameInfo.frame : 0,
+    anchors: heroEquipmentAnchorsForFrame(skeleton, entity, actionName, frameInfo ? frameInfo.frame : 0, sprite)
+  }
+}
+
+function drawPixelHero(skeleton, entity, renderInfo = null) {
+  const info = renderInfo || pixelHeroRenderInfo(skeleton, entity)
+  if (!info) {
+    return false
+  }
+  const drew = drawSpriteSheetFrameBottom(
+    info.sprite,
+    info.actionName,
+    info.centerX,
+    info.bottomY,
+    false
+  )
+  if (!drew) {
+    return false
+  }
+  return {
+    actionName: info.actionName,
+    frame: info.frame,
+    anchors: info.anchors
+  }
+}
+
+function heroEquipmentAnchorsForFrame(skeleton, entity, actionName, frame, sprite) {
+  const source = heroPixelAnchorPoints(actionName, frame, sprite.anchors)
+    || heroPixelHandPoints(actionName, frame, entity && entity.gender === 'female')
+  const centerX = skeleton.hips.x + 1
+  const bottomY = Math.max(skeleton.leftFoot.y, skeleton.rightFoot.y) + 4
+  const frameWidth = Number(sprite.frameWidth || 96)
+  const frameHeight = Number(sprite.frameHeight || 96)
+  const drawWidth = Number(sprite.drawWidth || frameWidth)
+  const drawHeight = Number(sprite.drawHeight || frameHeight)
+  const x = centerX - drawWidth / 2
+  const y = bottomY - drawHeight
+  const scaleX = drawWidth / frameWidth
+  const scaleY = drawHeight / frameHeight
+  const sourceScaleX = source.frameBased ? 1 : frameWidth / 96
+  const sourceScaleY = source.frameBased ? 1 : frameHeight / 96
+  const mapPoint = (point) => ({
+    x: x + point.x * sourceScaleX * scaleX,
+    y: y + point.y * sourceScaleY * scaleY,
+    angle: point.angle
+  })
+  const mainHand = mapPoint(source.rightHand)
+  const offHand = mapPoint(source.leftHand)
+  return {
+    ...skeleton,
+    rightHand: mainHand,
+    leftHand: offHand,
+    mainHand,
+    offHand,
+    ringHand: mapPoint(source.ringHand || source.leftHand),
+    head: mapPoint(source.head),
+    torso: mapPoint(source.torso),
+    halo: mapPoint(source.halo || { x: source.head.x, y: source.head.y - 14, angle: 0 }),
+    back: mapPoint(source.back || { x: source.torso.x - 12, y: source.torso.y, angle: 0 }),
+    feetCenter: mapPoint(source.feetCenter || { x: 48, y: 92, angle: 0 }),
+    weaponTip: mapPoint(source.weaponTip)
+  }
+}
+
+function heroPixelAnchorPoints(actionName, frame, anchors) {
+  if (!anchors) {
+    return null
+  }
+  const phase = (frame / 8) * Math.PI * 2
+  const attack = actionName.startsWith('attack')
+  const swing = attack ? Math.sin(phase) : 0
+  const bob = Math.sin(phase) * 1.2
+  const point = (name, fallback, dx = 0, dy = 0, angle = 0) => {
+    const value = anchors[name] || fallback
+    return {
+      x: value[0] + dx,
+      y: value[1] + dy,
+      angle
+    }
+  }
+  const mainAngle = attack ? -0.82 + swing * 0.26 : -0.18
+  const offAngle = attack && actionName === 'attack_dual' ? -2.65 - swing * 0.2 : -2.35
+  const mainHand = point('mainHand', [82, 75], attack ? swing * 8 : 0, attack ? -6 + swing * 2 : bob, mainAngle)
+  const offHandDrift = attack ? 8 + swing * 7 : Math.sin(phase) * 1.4
+  const offHandLift = attack ? -10 + swing * 2 : bob * 0.6
+  const offHand = point('offHand', [47, 78], offHandDrift, offHandLift, offAngle)
+  const ringHandDrift = attack ? -2 + swing * 3 : Math.sin(phase) * 1.2
+  const ringHandLift = attack ? -5 + swing * 2 : bob * 0.6
+  const ringHand = point('ringHand', [53, 68], ringHandDrift, ringHandLift, offAngle)
+  return {
+    frameBased: true,
+    leftHand: offHand,
+    rightHand: mainHand,
+    ringHand,
+    head: point('head', [64, 34], 0, bob * 0.4, 0),
+    torso: point('torso', [62, 70], 0, bob * 0.35, 0),
+    halo: point('halo', [64, 23], 0, bob * 0.25, 0),
+    back: point('back', [49, 70], -Math.max(0, swing) * 2, bob * 0.2, 0),
+    feetCenter: point('feetCenter', [64, 120], 0, 0, 0),
+    weaponTip: {
+      x: mainHand.x + Math.cos(mainHand.angle) * 54,
+      y: mainHand.y + Math.sin(mainHand.angle) * 54,
+      angle: mainHand.angle
+    }
+  }
+}
+
+function heroPixelHandPoints(actionName, frame) {
+  const phase = (frame / 8) * Math.PI * 2
+  const breath = Math.round(Math.sin(phase) * 1)
+  const stride = Math.round(Math.sin(phase) * 5)
+  const torsoY = 45 + breath
+  const headY = 29 + breath
+  const attackCurve = [0, 3, 9, 15, 18, 10, 4, 0][frame] || 0
+  const attacking = actionName.startsWith('attack_')
+  const lean = attacking ? Math.round(attackCurve / 5) : actionName === 'hurt' ? -5 : 0
+  let leftHand = {
+    x: 31 + lean - (actionName === 'walk' ? stride / 3 : 0),
+    y: torsoY + 16,
+    angle: -2.45
+  }
+  let rightHand = {
+    x: 63 + lean + (actionName === 'walk' ? stride / 3 : 0),
+    y: torsoY + 14,
+    angle: -0.28
+  }
+
+  if (actionName === 'attack_unarmed') {
+    rightHand = { x: 66 + lean + attackCurve, y: torsoY + 12 - attackCurve / 6, angle: -0.35 }
+    leftHand = { x: 34 + lean, y: torsoY + 11, angle: -2.2 }
+  } else if (actionName === 'attack_blade') {
+    rightHand = { x: 63 + lean + attackCurve, y: torsoY + 9 - attackCurve / 5, angle: -0.72 }
+    leftHand = { x: 33 + lean, y: torsoY + 17, angle: -2.32 }
+  } else if (actionName === 'attack_dual') {
+    rightHand = { x: 61 + lean + attackCurve, y: torsoY + 8 - attackCurve / 5, angle: -0.82 }
+    leftHand = { x: 35 + lean + attackCurve / 2, y: torsoY + 20 + attackCurve / 9, angle: -2.95 }
+  } else if (actionName === 'attack_bow') {
+    rightHand = { x: 39 + lean - attackCurve / 5, y: torsoY + 5, angle: -0.08 }
+    leftHand = { x: 65 + lean + attackCurve / 3, y: torsoY + 7, angle: -0.08 }
+  } else if (actionName === 'attack_spear') {
+    rightHand = { x: 54 + lean + attackCurve / 2, y: torsoY + 13, angle: -0.2 }
+    leftHand = { x: 72 + lean + attackCurve, y: torsoY + 8 - attackCurve / 8, angle: -0.2 }
+  } else if (actionName === 'attack_heavy') {
+    rightHand = { x: 56 + lean + attackCurve / 2, y: torsoY - 4 + attackCurve / 5, angle: -1.18 }
+    leftHand = { x: 43 + lean + attackCurve / 3, y: torsoY - 3 + attackCurve / 5, angle: -1.18 }
+  }
+
+  return {
+    leftHand,
+    rightHand,
+    head: { x: 49 + lean, y: headY - 1, angle: 0 },
+    torso: { x: 48 + lean, y: torsoY + 12, angle: 0 },
+    weaponTip: {
+      x: rightHand.x + Math.cos(rightHand.angle) * 52,
+      y: rightHand.y + Math.sin(rightHand.angle) * 52,
+      angle: rightHand.angle
+    }
+  }
+}
+
 function drawHero(x, y, entity) {
   const skeleton = createHeroSkeleton(x, y, entity)
   drawMovementTrail(x, y, entity)
@@ -2342,14 +2771,19 @@ function drawHero(x, y, entity) {
   if (entity.state === 'reviving') {
     drawReviveAura(skeleton, entity)
   }
-  drawHeroRig(skeleton, entity)
-  drawEquippedBoots(skeleton, (entity.equipped || {}).boots)
-  drawEquippedArmor(skeleton, (entity.equipped || {}).armor)
-  drawEquippedRing(skeleton, (entity.equipped || {}).ring)
-  drawEquippedHelmet(skeleton, (entity.equipped || {}).helmet)
-  drawEquippedWeapon(skeleton, entity)
-  drawEquippedParticleEffects(skeleton, entity)
-  drawHeroHealthBar(skeleton, entity)
+  const pixelInfo = pixelHeroRenderInfo(skeleton, entity)
+  const equipmentSkeleton = pixelInfo && pixelInfo.anchors ? pixelInfo.anchors : skeleton
+  drawEquippedFootCircle(equipmentSkeleton, (entity.equipped || {}).boots)
+  drawEquippedWings(equipmentSkeleton, (entity.equipped || {}).armor)
+  const drewPixelHero = drawPixelHero(skeleton, entity, pixelInfo)
+  if (!drewPixelHero) {
+    drawHeroRig(skeleton, entity)
+  }
+  drawEquippedHalo(equipmentSkeleton, (entity.equipped || {}).helmet)
+  drawRingPet(equipmentSkeleton, (entity.equipped || {}).ring)
+  drawEquippedWeapon(equipmentSkeleton, entity)
+  drawEquippedParticleEffects(equipmentSkeleton, entity)
+  drawHeroHealthBar(equipmentSkeleton, entity)
 }
 
 function movementIntensity(entity) {
@@ -2436,6 +2870,9 @@ function createHeroSkeleton(x, y, entity) {
     leftHand,
     mainHand: rightHand,
     offHand: leftHand,
+    halo: { x: head.x, y: head.y - 18, angle: 0 },
+    back: { x: torso.x - 16, y: torso.y + 1, angle: 0 },
+    feetCenter: { x, y: y + 1, angle: 0 },
     rightKnee: { x: x + 8 + counterStride * 5, y: y - 14 },
     leftKnee: { x: x - 8 + stride * 5, y: y - 14 },
     rightFoot: { x: x + 11 + counterStride * 7, y: y - 1 },
@@ -2684,107 +3121,260 @@ function drawRigBoot(foot) {
   ctx.fill()
 }
 
-function drawEquippedArmor(skeleton, armor) {
+function drawEquippedWings(skeleton, armor) {
   if (!armor) {
     return
   }
   const appearance = equipmentAppearance(armor)
   const palette = appearance.palette || FALLBACK_GEAR_PALETTES.white
-  drawEquipmentGlow(skeleton.torso, appearance, 26, 33)
+  const anchor = skeleton.back || skeleton.torso
+  const pulse = 0.55 + animationPhase(680) * 0.45
+  const rareScale = armor.rarity === 'red' ? 1.24 : armor.rarity === 'gold' ? 1.14 : armor.rarity === 'purple' ? 1.08 : 1
+  const spread = 52 * rareScale + pulse * 6
+  const lift = 58 * rareScale
+  drawEquipmentGlow(anchor, appearance, 68 * rareScale, 76 * rareScale)
   ctx.save()
+  ctx.globalAlpha = 0.66
   ctx.fillStyle = palette.primary
-  ctx.strokeStyle = palette.accent
-  ctx.lineWidth = 2.5
-  ctx.beginPath()
-  ctx.moveTo(skeleton.leftShoulder.x - 1, skeleton.leftShoulder.y + 4)
-  ctx.lineTo(skeleton.rightShoulder.x + 3, skeleton.rightShoulder.y + 3)
-  ctx.lineTo(skeleton.hips.x + skeleton.hip + 3, skeleton.hips.y + 5)
-  ctx.lineTo(skeleton.hips.x - skeleton.hip - 2, skeleton.hips.y + 5)
-  ctx.closePath()
-  ctx.fill()
-  ctx.stroke()
-  ctx.strokeStyle = 'rgba(255,255,255,0.42)'
-  ctx.lineWidth = 1.8
-  ctx.beginPath()
-  ctx.moveTo(skeleton.torso.x, skeleton.torso.y - 14)
-  ctx.lineTo(skeleton.torso.x, skeleton.torso.y + 14)
-  ctx.moveTo(skeleton.torso.x - 10, skeleton.torso.y - 1)
-  ctx.lineTo(skeleton.torso.x + 10, skeleton.torso.y - 1)
-  ctx.stroke()
+  ctx.strokeStyle = palette.glow
+  ctx.lineWidth = armor.rarity === 'white' ? 1.4 : 2.2
+  ;[-1, 1].forEach((side) => {
+    ctx.beginPath()
+    ctx.moveTo(anchor.x + side * 3, anchor.y - 4)
+    ctx.bezierCurveTo(
+      anchor.x + side * spread * 0.42,
+      anchor.y - lift,
+      anchor.x + side * spread,
+      anchor.y - lift * 0.65,
+      anchor.x + side * (spread + 8),
+      anchor.y - 4
+    )
+    ctx.bezierCurveTo(
+      anchor.x + side * spread * 0.58,
+      anchor.y + 6,
+      anchor.x + side * spread * 0.28,
+      anchor.y + 18,
+      anchor.x + side * 3,
+      anchor.y + 8
+    )
+    ctx.closePath()
+    ctx.fill()
+    ctx.stroke()
+    ctx.strokeStyle = palette.accent
+    ctx.lineWidth = 1.4
+    for (let line = 0; line < 3; line += 1) {
+      ctx.beginPath()
+      ctx.moveTo(anchor.x + side * 7, anchor.y + line * 4)
+      ctx.quadraticCurveTo(
+        anchor.x + side * (18 + line * 8),
+        anchor.y - 11 - line * 9,
+        anchor.x + side * (spread - line * 4),
+        anchor.y - 3 + line * 5
+      )
+      ctx.stroke()
+    }
+  })
+  if (['purple', 'gold', 'red'].includes(armor.rarity)) {
+    drawWingSparks(anchor, palette, armor.rarity, spread)
+  }
   ctx.restore()
 }
 
-function drawEquippedHelmet(skeleton, helmet) {
+function drawEquippedHalo(skeleton, helmet) {
   if (!helmet) {
     return
   }
   const appearance = equipmentAppearance(helmet)
   const palette = appearance.palette || FALLBACK_GEAR_PALETTES.white
-  drawEquipmentGlow(skeleton.head, appearance, 21, 23)
+  const anchor = skeleton.halo || { x: skeleton.head.x, y: skeleton.head.y - 18 }
+  const pulse = 0.5 + animationPhase(520) * 0.5
+  const radiusX = helmet.rarity === 'red' ? 22 : helmet.rarity === 'gold' ? 20 : 17
+  const radiusY = helmet.rarity === 'red' ? 7 : 5
+  drawEquipmentGlow(anchor, appearance, radiusX, radiusY + 12)
   ctx.save()
-  ctx.strokeStyle = palette.accent
-  ctx.fillStyle = palette.primary
-  ctx.lineWidth = 2
+  ctx.strokeStyle = palette.glow
+  ctx.lineWidth = helmet.rarity === 'white' ? 2 : 2.7
+  ctx.globalAlpha = 0.82
   ctx.beginPath()
-  ctx.ellipse(skeleton.head.x, skeleton.head.y - 8, 15, 9, -0.04, Math.PI, Math.PI * 2)
-  ctx.lineTo(skeleton.head.x + 13, skeleton.head.y - 1)
-  ctx.lineTo(skeleton.head.x - 12, skeleton.head.y - 1)
-  ctx.closePath()
-  ctx.fill()
+  ctx.ellipse(anchor.x, anchor.y, radiusX + pulse * 2.4, radiusY + pulse, -0.08, 0, Math.PI * 2)
   ctx.stroke()
-  if (appearance.model === 'crown_helm') {
+  ctx.globalAlpha = 0.32
+  ctx.strokeStyle = palette.primary
+  ctx.beginPath()
+  ctx.ellipse(anchor.x, anchor.y + 1.5, radiusX * 0.72, radiusY * 0.62, -0.08, 0, Math.PI * 2)
+  ctx.stroke()
+  if (appearance.model === 'crown_helm' || ['gold', 'red'].includes(helmet.rarity)) {
+    ctx.globalAlpha = 0.78
     ctx.fillStyle = palette.glow
-    triangle(skeleton.head.x - 7, skeleton.head.y - 17, 8, 10)
-    triangle(skeleton.head.x + 1, skeleton.head.y - 19, 8, 12)
-    triangle(skeleton.head.x + 9, skeleton.head.y - 17, 8, 10)
+    for (let i = -2; i <= 2; i += 1) {
+      triangle(anchor.x + i * 8, anchor.y - 15 - Math.abs(i) * 2, 5, 9 + (2 - Math.abs(i)) * 2)
+    }
   }
   ctx.restore()
 }
 
-function drawEquippedBoots(skeleton, boots) {
+function drawEquippedFootCircle(skeleton, boots) {
   if (!boots) {
     return
   }
   const appearance = equipmentAppearance(boots)
   const palette = appearance.palette || FALLBACK_GEAR_PALETTES.white
+  const anchor = skeleton.feetCenter || {
+    x: (skeleton.leftFoot.x + skeleton.rightFoot.x) / 2,
+    y: (skeleton.leftFoot.y + skeleton.rightFoot.y) / 2
+  }
+  const pulse = 0.45 + animationPhase(620) * 0.55
+  const radiusX = boots.rarity === 'red' ? 34 : boots.rarity === 'gold' ? 30 : 25
+  const radiusY = boots.rarity === 'red' ? 9 : 7
   ctx.save()
-  ;[skeleton.rightFoot, skeleton.leftFoot].forEach((foot, index) => {
-    ctx.fillStyle = palette.primary
-    roundRect(foot.x - 9, foot.y - 5, 18, 8, 3)
-    ctx.fill()
-    ctx.strokeStyle = palette.accent
-    ctx.lineWidth = 2
+  ctx.globalAlpha = 0.16 + pulse * 0.14
+  ctx.fillStyle = palette.glow
+  ctx.beginPath()
+  ctx.ellipse(anchor.x, anchor.y + 5, radiusX + pulse * 4, radiusY + pulse * 1.5, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.globalAlpha = 0.78
+  ctx.strokeStyle = palette.primary
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.ellipse(anchor.x, anchor.y + 5, radiusX, radiusY, 0, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.strokeStyle = palette.accent
+  ctx.lineWidth = 1.5
+  for (let i = 0; i < 5; i += 1) {
+    const angle = (i / 5) * Math.PI * 2 + (state.lastRenderAt || 0) / 900
+    ctx.beginPath()
+    ctx.arc(anchor.x + Math.cos(angle) * radiusX * 0.62, anchor.y + 5 + Math.sin(angle) * radiusY * 0.62, 2.2, 0, Math.PI * 2)
     ctx.stroke()
-    if (appearance.model === 'winged_boots') {
-      ctx.strokeStyle = palette.glow
-      ctx.beginPath()
-      ctx.moveTo(foot.x + (index === 0 ? 5 : -5), foot.y - 8)
-      ctx.lineTo(foot.x + (index === 0 ? 15 : -15), foot.y - 14)
-      ctx.lineTo(foot.x + (index === 0 ? 9 : -9), foot.y - 4)
-      ctx.stroke()
-    }
-  })
+  }
   ctx.restore()
 }
 
-function drawEquippedRing(skeleton, ring) {
+function drawWingSparks(anchor, palette, rarity, spread) {
+  const count = rarity === 'red' ? 9 : rarity === 'gold' ? 7 : 5
+  const now = state.lastRenderAt || 0
+  for (let i = 0; i < count; i += 1) {
+    const side = i % 2 === 0 ? -1 : 1
+    const phase = now / (520 + i * 31) + i
+    const x = anchor.x + side * (16 + (i % 4) * (spread / 7)) + Math.cos(phase) * 4
+    const y = anchor.y - 26 + Math.sin(phase * 1.4) * 18
+    ctx.globalAlpha = 0.28 + animationPhase(360 + i * 20) * 0.36
+    ctx.fillStyle = i % 3 === 0 ? palette.glow : palette.primary
+    ctx.beginPath()
+    ctx.arc(x, y, rarity === 'red' ? 2.5 : 2, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.globalAlpha = 1
+}
+
+function drawRingPet(skeleton, ring) {
   if (!ring) {
     return
   }
   const appearance = equipmentAppearance(ring)
+  const anchor = ringPetAnchor(skeleton.ringHand || skeleton.offHand)
+  drawEquipmentGlow(anchor, appearance, 18, 16)
+  drawPetBody(anchor, appearance, ring)
+}
+
+function ringPetAnchor(hand) {
+  const bob = Math.sin((state.lastRenderAt || 0) / 260) * 2
+  return {
+    x: hand.x + 2,
+    y: hand.y - 3 + bob,
+    angle: hand.angle
+  }
+}
+
+function drawPetBody(anchor, appearance, ring) {
   const palette = appearance.palette || FALLBACK_GEAR_PALETTES.white
-  drawEquipmentGlow(skeleton.offHand, appearance, 15, 15)
+  const rarity = (ring && ring.rarity) || 'white'
+  const model = String(appearance.model || '')
+  const scale = rarity === 'red' ? 1.14 : rarity === 'gold' ? 1.08 : 1
+  const bodyColor = model.includes('fox') ? '#f0a45f' : model.includes('bunny') ? '#f0d4ef' : model.includes('cat') ? '#c9d8ee' : palette.primary
+  const bellyColor = model.includes('fox') ? '#ffe1b2' : model.includes('bunny') ? '#fff0fb' : '#eef6f1'
+  const earColor = model.includes('fox') ? '#d96c43' : palette.accent
+  const pulse = 0.5 + animationPhase(580) * 0.5
+
   ctx.save()
-  ctx.strokeStyle = palette.glow
-  ctx.lineWidth = 2
+  ctx.globalAlpha = 0.26
+  ctx.fillStyle = palette.glow
   ctx.beginPath()
-  ctx.ellipse(skeleton.offHand.x, skeleton.offHand.y, 8, 4, -0.5, 0, Math.PI * 2)
+  ctx.ellipse(anchor.x, anchor.y + 13 * scale, 13 * scale, 5 * scale, 0, 0, Math.PI * 2)
+  ctx.fill()
+
+  ctx.globalAlpha = 1
+  ctx.fillStyle = bodyColor
+  ctx.strokeStyle = palette.accent
+  ctx.lineWidth = 1.6
+  ctx.beginPath()
+  ctx.ellipse(anchor.x, anchor.y + 3, 12 * scale, 10 * scale, 0, 0, Math.PI * 2)
+  ctx.fill()
   ctx.stroke()
-  ctx.fillStyle = palette.primary
+
+  ctx.fillStyle = bellyColor
   ctx.beginPath()
-  ctx.arc(skeleton.offHand.x + 5, skeleton.offHand.y - 4, 3, 0, Math.PI * 2)
+  ctx.ellipse(anchor.x + 1, anchor.y + 6, 5 * scale, 4 * scale, 0, 0, Math.PI * 2)
+  ctx.fill()
+
+  ctx.fillStyle = earColor
+  if (model.includes('bunny')) {
+    roundPetEar(anchor.x - 7 * scale, anchor.y - 10 * scale, 4 * scale, 11 * scale, -0.22)
+    roundPetEar(anchor.x + 6 * scale, anchor.y - 10 * scale, 4 * scale, 11 * scale, 0.18)
+  } else {
+    triangle(anchor.x - 7 * scale, anchor.y - 8 * scale, 8 * scale, 11 * scale)
+    triangle(anchor.x + 7 * scale, anchor.y - 8 * scale, 8 * scale, 11 * scale)
+  }
+
+  ctx.fillStyle = model.includes('fox') ? '#f5c078' : palette.primary
+  ctx.beginPath()
+  ctx.ellipse(anchor.x - 12 * scale, anchor.y + 4 * scale, 5 * scale, 9 * scale, -0.7, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = bellyColor
+  ctx.beginPath()
+  ctx.arc(anchor.x - 15 * scale, anchor.y - 1 * scale, 2.6 * scale, 0, Math.PI * 2)
+  ctx.fill()
+
+  ctx.fillStyle = '#101817'
+  ctx.fillRect(anchor.x - 4 * scale, anchor.y + 1 * scale, 2.4 * scale, 2.4 * scale)
+  ctx.fillRect(anchor.x + 5 * scale, anchor.y + 1 * scale, 2.4 * scale, 2.4 * scale)
+  ctx.fillStyle = '#f5ecd6'
+  ctx.fillRect(anchor.x - 3.6 * scale, anchor.y + 1 * scale, 0.9 * scale, 0.9 * scale)
+  ctx.fillRect(anchor.x + 5.4 * scale, anchor.y + 1 * scale, 0.9 * scale, 0.9 * scale)
+
+  ctx.strokeStyle = '#1b211f'
+  ctx.lineWidth = 1.4
+  ctx.beginPath()
+  ctx.arc(anchor.x + 1, anchor.y + 4 * scale, 3 * scale, 0.1, Math.PI - 0.1)
+  ctx.stroke()
+
+  if (['purple', 'gold', 'red'].includes(rarity)) {
+    drawPetSparkles(anchor, palette, rarity, pulse)
+  }
+  ctx.restore()
+}
+
+function roundPetEar(x, y, width, height, rotation) {
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate(rotation)
+  ctx.beginPath()
+  ctx.ellipse(0, 0, width, height, 0, 0, Math.PI * 2)
   ctx.fill()
   ctx.restore()
+}
+
+function drawPetSparkles(anchor, palette, rarity, pulse) {
+  const count = rarity === 'red' ? 6 : rarity === 'gold' ? 5 : 4
+  const now = state.lastRenderAt || 0
+  for (let i = 0; i < count; i += 1) {
+    const angle = now / (420 + i * 24) + i * 1.8
+    ctx.globalAlpha = 0.26 + pulse * 0.32
+    ctx.fillStyle = i % 2 === 0 ? palette.glow : palette.primary
+    ctx.beginPath()
+    ctx.arc(anchor.x + Math.cos(angle) * (14 + i), anchor.y + Math.sin(angle * 1.4) * 9, 1.7, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.globalAlpha = 1
 }
 
 function drawEquipmentGlow(anchor, appearance, width, height) {
@@ -2806,13 +3396,13 @@ function drawEquippedParticleEffects(skeleton, entity) {
   const equipped = entity.equipped || {}
   const anchors = {
     weapon: skeleton.mainHand,
-    helmet: skeleton.head,
-    armor: skeleton.torso,
-    boots: {
+    helmet: skeleton.halo || skeleton.head,
+    armor: skeleton.back || skeleton.torso,
+    boots: skeleton.feetCenter || {
       x: (skeleton.leftFoot.x + skeleton.rightFoot.x) / 2,
       y: (skeleton.leftFoot.y + skeleton.rightFoot.y) / 2
     },
-    ring: skeleton.offHand
+    ring: ringPetAnchor(skeleton.ringHand || skeleton.offHand)
   }
   Object.keys(equipped).forEach((slot) => {
     const item = equipped[slot]
@@ -2849,6 +3439,11 @@ function drawRarityParticle(anchor, item, slot) {
 
 function drawEquippedWeapon(skeleton, entity) {
   const equipped = entity.equipped || {}
+  const weaponProfile = heroWeaponProfile(entity)
+  if (weaponProfile.type === 'bow' && weaponProfile.main) {
+    drawBowOnHands(skeleton.offHand, skeleton.mainHand, weaponProfile.main)
+    return
+  }
   if (equipped.weapon) {
     drawWeaponOnHand(skeleton.mainHand, equipped.weapon)
   } else if (entity.weapon) {
@@ -2856,14 +3451,57 @@ function drawEquippedWeapon(skeleton, entity) {
   }
   if (entity.offhand_weapon) {
     drawWeaponOnHand(skeleton.offHand, entity.offhand_weapon, true)
+  } else if (weaponProfile.dual && weaponProfile.main) {
+    drawWeaponOnHand(skeleton.offHand, weaponProfile.main, true)
   }
 }
 
-function drawWeaponOnHand(hand, weapon, offhand = false) {
-  const type = weapon.weapon_type || 'blade'
+function drawBowOnHands(frontHand, drawHand, weapon) {
   const appearance = equipmentAppearance(weapon)
   const palette = appearance.palette || FALLBACK_GEAR_PALETTES.white
-  const reach = type === 'spear' ? 66 : type === 'axe' ? 48 : 42
+  const dx = drawHand.x - frontHand.x
+  const dy = drawHand.y - frontHand.y
+  const angle = Math.atan2(dy, dx)
+  const pull = Math.max(12, Math.min(38, Math.hypot(dx, dy)))
+  ctx.save()
+  ctx.translate(frontHand.x, frontHand.y)
+  ctx.rotate(angle)
+  ctx.strokeStyle = appearance.aura ? palette.glow : palette.primary
+  ctx.lineWidth = 4
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.arc(0, 0, 31, -1.15, 1.15)
+  ctx.stroke()
+  ctx.strokeStyle = '#d9d1c3'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.moveTo(12, -28)
+  ctx.lineTo(-pull, 0)
+  ctx.lineTo(12, 28)
+  ctx.stroke()
+  ctx.strokeStyle = palette.accent
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(-pull + 3, 0)
+  ctx.lineTo(39, 0)
+  ctx.stroke()
+  ctx.fillStyle = palette.glow
+  triangle(43, -4, 9, 8)
+  ctx.restore()
+}
+
+function drawWeaponOnHand(hand, weapon, offhand = false) {
+  const rawType = String(weapon.weapon_type || 'blade').toLowerCase()
+  const type = rawType.includes('spear') || rawType.includes('pole') || rawType.includes('staff')
+    ? 'spear'
+    : rawType.includes('axe') || rawType.includes('hammer') || rawType.includes('heavy') || rawType.includes('great')
+      ? 'heavy'
+      : rawType.includes('dagger')
+        ? 'dagger'
+        : 'blade'
+  const appearance = equipmentAppearance(weapon)
+  const palette = appearance.palette || FALLBACK_GEAR_PALETTES.white
+  const reach = type === 'spear' ? 62 : type === 'heavy' ? 48 : type === 'dagger' ? 27 : 37
   const angle = offhand ? hand.angle + Math.PI : hand.angle
   ctx.save()
   ctx.translate(hand.x, hand.y)
@@ -2904,13 +3542,13 @@ function drawWeaponHead(type, reach, palette = FALLBACK_GEAR_PALETTES.white, app
     ctx.stroke()
     return
   }
-  if (type === 'axe') {
+  if (type === 'heavy') {
     ctx.fillStyle = palette.primary
     ctx.beginPath()
-    ctx.ellipse(reach + 1, -5, 14, 10, -0.28, 0, Math.PI * 2)
+    ctx.ellipse(reach + 2, -5, 16, 11, -0.28, 0, Math.PI * 2)
     ctx.fill()
     ctx.fillStyle = palette.accent
-    ctx.fillRect(reach - 3, -13, 6, 24)
+    ctx.fillRect(reach - 4, -15, 8, 28)
     return
   }
   ctx.strokeStyle = palette.primary
@@ -2926,6 +3564,47 @@ function drawWeaponHead(type, reach, palette = FALLBACK_GEAR_PALETTES.white, app
   ctx.lineTo(reach + 6, 6)
   ctx.closePath()
   ctx.fill()
+}
+
+function pixelMonsterRecord(entity) {
+  const name = entity.name || ''
+  if (entity.role === 'boss') {
+    return PIXEL_SPRITES.monsters.forest_boss
+  }
+  if (name.includes('thorn') || name.includes('bramble') || name.includes('ancient') || name.includes('bark')) {
+    return PIXEL_SPRITES.monsters.thorn
+  }
+  if (name.includes('imp') || name.includes('guard') || name.includes('knight') || name.includes('squire')) {
+    return PIXEL_SPRITES.monsters.imp
+  }
+  return PIXEL_SPRITES.monsters.slime
+}
+
+function pixelMonsterAction(entity) {
+  if (!entity) return 'idle'
+  if (Number(entity.hp || 0) <= 0) return 'death'
+  if (entity.role === 'boss') return 'attack'
+  return 'walk'
+}
+
+function drawPixelMonster(x, y, entity) {
+  const sprite = pixelMonsterRecord(entity)
+  if (!sprite) {
+    return false
+  }
+  const threat = Math.max(1, Number(entity.threat || 1))
+  const scaled = {
+    ...sprite,
+    drawWidth: Number(sprite.drawWidth || sprite.frameWidth) * Math.min(1.22, 1 + (threat - 1) * 0.08),
+    drawHeight: Number(sprite.drawHeight || sprite.frameHeight) * Math.min(1.22, 1 + (threat - 1) * 0.08)
+  }
+  return drawSpriteSheetFrameBottom(
+    scaled,
+    pixelMonsterAction(entity),
+    x,
+    y,
+    monsterFacingFlip(entity)
+  )
 }
 
 function drawMonster(x, y, entity) {
@@ -2944,6 +3623,18 @@ function drawMonster(x, y, entity) {
   const height = boss ? 92 : name.includes('mushroom') ? 56 : 58
   const flightLift = name.includes('bat') || name.includes('wisp') || name.includes('harpy') || name.includes('mote') ? 26 : 0
   const flipTowardHero = monsterFacingFlip(entity)
+  const drewPixelMonster = drawPixelMonster(x, y - flightLift + 5, entity)
+  if (drewPixelMonster) {
+    drawMonsterThreatOverlay(x, y - flightLift + 5, boss ? 126 : 72, boss ? 126 : 72, threatStyle)
+    if (boss) {
+      ctx.strokeStyle = 'rgba(255, 202, 85, 0.72)'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.ellipse(x, y - 56, 54, 42, 0, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    return
+  }
   const drewMonster = frames
     ? drawBlendedSpriteBottom(frames[0], frames[1], x, y - flightLift + 3, width, height, flipTowardHero, frames[2])
     : drawSpriteBottom(key, x, y - flightLift + 3, width, height, flipTowardHero)
@@ -3425,15 +4116,19 @@ els.listingPriceInput.addEventListener('keydown', (event) => {
 
 els.talentList.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-action="evolve-talent"]')
-  if (!button || button.disabled) {
+  if (!button || button.disabled || state.talentEvolutionInFlight) {
     return
   }
-  postAction('/talent/evolve', { talent_id: button.dataset.id }, t('evolve'))
+  evolveTalent(button)
 })
 
 els.marketList.addEventListener('click', (event) => {
-  const button = event.target.closest('button[data-action="buy"]')
+  const button = event.target.closest('button[data-action]')
   if (!button || button.disabled) {
+    return
+  }
+  const action = button.dataset.action
+  if (!['buy', 'cancel-listing'].includes(action)) {
     return
   }
   const listingId = button.dataset.id
@@ -3444,8 +4139,11 @@ els.marketList.addEventListener('click', (event) => {
   if (state.snapshot && state.snapshot.market && state.snapshot.hero) {
     renderMarket(state.snapshot.market.active || [], state.snapshot.hero.id, true)
   }
-  setStatus(t('buying'))
-  postAction('/market/buy', { listing_id: listingId }, t('buy'))
+  const path = action === 'cancel-listing' ? '/market/cancel' : '/market/buy'
+  const busyText = action === 'cancel-listing' ? t('cancelingListing') : t('buying')
+  const doneText = action === 'cancel-listing' ? t('cancelListing') : t('buy')
+  setStatus(busyText)
+  postAction(path, { listing_id: listingId }, doneText)
     .finally(() => {
       state.marketActionInFlightIds.delete(listingId)
       if (state.snapshot && state.snapshot.market && state.snapshot.hero) {

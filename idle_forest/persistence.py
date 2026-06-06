@@ -552,6 +552,51 @@ class SQLiteSaveStore:
             raise ValueError("character save not found")
         return loaded
 
+    def market_snapshot(self, profile_id: str | None = None) -> dict[str, Any]:
+        if not self.path.exists():
+            return {"active": [], "history": []}
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                SELECT
+                    listing_id, profile_id, item_id, seller_id, buyer_id, price,
+                    active, created_tick, sold_tick, item_json
+                FROM market_listings
+                ORDER BY active DESC, updated_at DESC, created_tick DESC
+                """
+            ).fetchall()
+
+        listings = [
+            _market_listing_from_row(row).to_dict()
+            for row in rows
+            if _listing_visible_to_profile(row, profile_id)
+        ]
+        return {
+            "active": [listing for listing in listings if listing["active"]],
+            "history": listings,
+        }
+
+    def load_market_listing(self, listing_id: str) -> dict[str, Any]:
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            row = connection.execute(
+                """
+                SELECT
+                    listing_id, profile_id, item_id, seller_id, buyer_id, price,
+                    active, created_tick, sold_tick, item_json
+                FROM market_listings
+                WHERE listing_id = ?
+                """,
+                (listing_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"listing not found: {listing_id}")
+        return {
+            "profile_id": str(row["profile_id"]),
+            "listing": _market_listing_from_row(row),
+        }
+
     def list_characters(self, account_id: str) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:
             self._ensure_schema(connection)
@@ -1018,3 +1063,25 @@ def _character_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         "gender": str(row["gender"]),
         "profile_id": str(row["profile_id"]),
     }
+
+
+def _market_listing_from_row(row: sqlite3.Row) -> MarketListing:
+    return MarketListing(
+        id=str(row["listing_id"]),
+        item=equipment_from_save(json.loads(row["item_json"])),
+        seller_id=str(row["seller_id"]),
+        price=int(row["price"]),
+        created_tick=int(row["created_tick"]),
+        active=bool(row["active"]),
+        buyer_id=row["buyer_id"],
+        sold_tick=row["sold_tick"],
+    )
+
+
+def _listing_visible_to_profile(row: sqlite3.Row, profile_id: str | None) -> bool:
+    seller_id = str(row["seller_id"])
+    if profile_id is None:
+        return True
+    if not seller_id.startswith("npc_"):
+        return True
+    return str(row["profile_id"]) == profile_id

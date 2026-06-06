@@ -312,6 +312,17 @@ class GameEngine:
         )
         return item
 
+    def cancel_listing(self, listing_id: str) -> Equipment:
+        item = self.market.cancel(listing_id, self.hero.id, self.tick)
+        self.hero.inventory.append(item)
+        self._add_event(
+            "market_cancel",
+            f"Canceled listing for {item.name}.",
+            listing_id=listing_id,
+            item_id=item.id,
+        )
+        return item
+
     def snapshot(self) -> dict[str, Any]:
         camera_x = max(0.0, self.hero.x - 180.0)
         if self.mode == "rift" and self.active_rift is not None:

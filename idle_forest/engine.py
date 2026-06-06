@@ -446,7 +446,9 @@ class GameEngine:
         distance = self.active_monster.x - self.hero.x
         attack_range = self.hero.attack_range
         if distance > attack_range:
-            self.hero.x += min(distance - attack_range, self.hero.move_speed * dt)
+            move_distance = min(distance - attack_range, self.hero.move_speed * dt)
+            self.hero.x += move_distance
+            self._heal_hero_over_time(self.hero.hp_regen, dt)
             distance = self.active_monster.x - self.hero.x
         if distance > attack_range:
             return

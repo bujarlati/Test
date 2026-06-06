@@ -136,6 +136,21 @@ class GameEngineTests(unittest.TestCase):
         self.assertGreater(len(snapshot["scene"]["decorations"]), 0)
         self.assertEqual(len(snapshot["hero"]["talents"]), 3)
 
+    def test_move_speed_reaches_next_forest_encounter_faster(self) -> None:
+        slow = GameEngine(seed=101)
+        fast = GameEngine(seed=101)
+
+        slow.hero.speed = 25.0
+        fast.hero.speed = 75.0
+        slow._next_encounter_x = 140.0
+        fast._next_encounter_x = 140.0
+
+        slow.advance(2.0)
+        fast.advance(2.0)
+
+        self.assertIsNone(slow.active_monster)
+        self.assertIsNotNone(fast.active_monster)
+
     def test_combat_can_award_gold_or_loot(self) -> None:
         engine = GameEngine(seed=2)
         snapshot = engine.advance(90)
@@ -243,6 +258,29 @@ class GameEngineTests(unittest.TestCase):
         engine.advance(1)
 
         self.assertEqual(engine.hero.hp, 48)
+
+    def test_hp_regen_ticks_while_approaching_monster(self) -> None:
+        engine = GameEngine(seed=102)
+        engine.hero.hp = 20
+        engine.hero.base_hp_regen = 12.0
+        engine.active_monster = Monster(
+            id="far_monster",
+            kind="forest_slime",
+            level=1,
+            max_hp=200,
+            hp=200,
+            attack=1,
+            defense=0,
+            exp_reward=0,
+            gold_reward=0,
+            x=engine.hero.x + 220,
+            y=engine.hero.y,
+        )
+
+        engine.advance(1.0)
+
+        self.assertGreater(engine.hero.hp, 20)
+        self.assertIsNotNone(engine.active_monster)
 
     def test_equip_best_uses_highest_score_for_slot(self) -> None:
         engine = GameEngine(seed=3)

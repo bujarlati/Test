@@ -71,6 +71,7 @@ const UI_TEXT = {
     hp: '生命',
     attack: '攻击',
     defense: '防御',
+    moveSpeed: '移速',
     attackSpeed: '攻速',
     hpRegen: '回复',
     power: '战力',
@@ -142,6 +143,7 @@ const UI_TEXT = {
     hp: 'HP',
     attack: 'Attack',
     defense: 'Defense',
+    moveSpeed: 'Move Speed',
     attackSpeed: 'Atk Speed',
     hpRegen: 'Regen',
     power: 'Power',
@@ -293,6 +295,7 @@ const els = {
   hpText: document.querySelector('#hpText'),
   attackText: document.querySelector('#attackText'),
   defenseText: document.querySelector('#defenseText'),
+  moveSpeedText: document.querySelector('#moveSpeedText'),
   attackSpeedText: document.querySelector('#attackSpeedText'),
   hpRegenText: document.querySelector('#hpRegenText'),
   powerText: document.querySelector('#powerText'),
@@ -424,9 +427,10 @@ function applyStaticTranslations() {
   setText('.hero-strip .stat:nth-child(3) span', t('hp'))
   setText('.hero-strip .stat:nth-child(4) span', t('attack'))
   setText('.hero-strip .stat:nth-child(5) span', t('defense'))
-  setText('.hero-strip .stat:nth-child(6) span', t('attackSpeed'))
-  setText('.hero-strip .stat:nth-child(7) span', t('hpRegen'))
-  setText('.hero-strip .stat:nth-child(8) span', t('power'))
+  setText('.hero-strip .stat:nth-child(6) span', t('moveSpeed'))
+  setText('.hero-strip .stat:nth-child(7) span', t('attackSpeed'))
+  setText('.hero-strip .stat:nth-child(8) span', t('hpRegen'))
+  setText('.hero-strip .stat:nth-child(9) span', t('power'))
   setText('#tickButton', t('pushTen'))
   setText('#equipBestButton', t('equipBest'))
   setText('#resetButton', t('reset'))
@@ -797,6 +801,7 @@ function applySnapshot(snapshot) {
   els.hpText.textContent = `${hero.hp} / ${hero.max_hp}`
   els.attackText.textContent = hero.attack
   els.defenseText.textContent = hero.defense
+  els.moveSpeedText.textContent = `${Number(hero.speed || 0).toFixed(1)} / ${t('seconds')}`
   els.attackSpeedText.textContent = `${Number(hero.attack_speed || 0).toFixed(2)} / ${t('seconds')}`
   els.hpRegenText.textContent = `${Number(hero.hp_regen || 0).toFixed(1)} / ${t('seconds')}`
   els.powerText.textContent = forest.hero_power || rift.hero_power
@@ -1946,6 +1951,7 @@ function monsterSpriteKey(entity) {
 
 function drawHero(x, y, entity) {
   const skeleton = createHeroSkeleton(x, y, entity)
+  drawMovementTrail(x, y, entity)
   drawTalentAura(skeleton, entity)
   if (entity.state === 'reviving') {
     drawReviveAura(skeleton, entity)
@@ -1958,6 +1964,37 @@ function drawHero(x, y, entity) {
   drawEquippedWeapon(skeleton, entity)
   drawEquippedParticleEffects(skeleton, entity)
   drawHeroHealthBar(skeleton, entity)
+}
+
+function movementIntensity(entity) {
+  const speed = Number(
+    entity.speed ||
+    (state.snapshot && state.snapshot.hero && state.snapshot.hero.speed) ||
+    0
+  )
+  return Math.max(0, Math.min(1, (speed - 38) / 70))
+}
+
+function drawMovementTrail(x, groundY, entity) {
+  const intensity = movementIntensity(entity)
+  if (intensity <= 0 || (entity.state !== 'walk' && entity.state !== 'approach')) {
+    return
+  }
+  const pulse = 0.75 + Math.sin((state.lastRenderAt || 0) / 90) * 0.25
+  ctx.save()
+  ctx.globalAlpha = (0.12 + intensity * 0.2) * pulse
+  ctx.strokeStyle = '#c7f0d0'
+  ctx.lineWidth = 1.5 + intensity * 1.5
+  ctx.lineCap = 'round'
+  for (let index = 0; index < 4; index += 1) {
+    const offset = 18 + index * 13
+    const lift = 16 + index * 4
+    ctx.beginPath()
+    ctx.moveTo(x - offset, groundY - lift)
+    ctx.quadraticCurveTo(x - offset - 18, groundY - lift - 11, x - offset - 36, groundY - lift + 2)
+    ctx.stroke()
+  }
+  ctx.restore()
 }
 
 function drawHeroHealthBar(skeleton, entity) {

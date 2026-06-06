@@ -232,6 +232,20 @@ class WebStaticTests(unittest.TestCase):
         self.assertEqual(translations["Starter Wooden Sword"]["zh-CN"], "新手木剑")
         self.assertEqual(translations["Starter Wooden Sword"]["en-US"], "Starter Wooden Sword")
 
+    def test_frontend_displays_move_speed_stat(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("moveSpeedText", html)
+        self.assertIn("hero.speed", script)
+        self.assertIn("moveSpeed", script)
+
+    def test_frontend_scales_movement_visuals_with_speed(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("movementIntensity", script)
+        self.assertIn("drawMovementTrail", script)
+
     def test_frontend_persists_local_character(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 

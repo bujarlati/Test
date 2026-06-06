@@ -36,6 +36,32 @@ mkdir -p data
 python3 server.py --host 127.0.0.1 --port 8000
 ```
 
+## Package Deploy
+
+Release packages include `scripts/deploy_package.sh`. The script preserves `/opt/idle-game/data`, replaces the rest of the app, and restarts the `idle-game` systemd service.
+
+For the first package that contains the script, upload the package to `/tmp`,
+extract a temporary copy, and run the script from there:
+
+```bash
+mkdir -p /tmp/idle-game-release
+rm -rf /tmp/idle-game-release/*
+tar -xzf /tmp/idle_forest_release.tar.gz -C /tmp/idle-game-release
+sudo bash /tmp/idle-game-release/scripts/deploy_package.sh /tmp/idle_forest_release.tar.gz
+```
+
+After that, future package updates only need:
+
+```bash
+sudo /opt/idle-game/scripts/deploy_package.sh /tmp/idle_forest_release.tar.gz
+```
+
+The optional arguments are target directory and service name:
+
+```bash
+sudo /opt/idle-game/scripts/deploy_package.sh /tmp/idle_forest_release.zip /opt/idle-game idle-game
+```
+
 ## systemd Service
 
 Create the service:

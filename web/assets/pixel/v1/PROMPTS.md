@@ -4,6 +4,9 @@ These first-pass assets are generated locally with `tools/generate_pixel_assets.
 They establish the file layout, frame sizes, animation rows, and anchors that future
 Pixellab exports should follow.
 
+Future Pixellab generations should use the API workflow in
+`docs/pixellab-api-workflow.md` instead of manual web clicks.
+
 Recommended Pixellab prompt base:
 
 ```text

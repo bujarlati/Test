@@ -104,6 +104,108 @@
         }
       }
     },
+    "female_assassin": {
+      "image": "/web/assets/pixel/v1/heroes/female/pixellab_shadow_assassin.png",
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "drawWidth": 116,
+      "drawHeight": 116,
+      "anchors": {
+        "feet": [
+          64,
+          121
+        ],
+        "mainHand": [
+          91,
+          72
+        ],
+        "offHand": [
+          34,
+          73
+        ],
+        "ringHand": [
+          38,
+          83
+        ],
+        "head": [
+          64,
+          30
+        ],
+        "torso": [
+          62,
+          70
+        ],
+        "halo": [
+          64,
+          1
+        ],
+        "back": [
+          42,
+          31
+        ],
+        "feetCenter": [
+          61,
+          126
+        ]
+      },
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 5,
+          "frameMs": 78
+        },
+        "walk": {
+          "row": 1,
+          "frames": 16,
+          "frameMs": 44
+        },
+        "attack_unarmed": {
+          "row": 2,
+          "frames": 9,
+          "frameMs": 46
+        },
+        "attack_blade": {
+          "row": 3,
+          "frames": 9,
+          "frameMs": 44
+        },
+        "attack_dual": {
+          "row": 4,
+          "frames": 9,
+          "frameMs": 42
+        },
+        "attack_bow": {
+          "row": 5,
+          "frames": 9,
+          "frameMs": 52
+        },
+        "attack_spear": {
+          "row": 6,
+          "frames": 9,
+          "frameMs": 50
+        },
+        "attack_heavy": {
+          "row": 7,
+          "frames": 9,
+          "frameMs": 56
+        },
+        "hurt": {
+          "row": 8,
+          "frames": 5,
+          "frameMs": 70
+        },
+        "death": {
+          "row": 9,
+          "frames": 5,
+          "frameMs": 86
+        },
+        "revive": {
+          "row": 10,
+          "frames": 5,
+          "frameMs": 78
+        }
+      }
+    },
     "male_base": {
       "image": "/web/assets/pixel/v1/heroes/male/base.png",
       "frameWidth": 96,

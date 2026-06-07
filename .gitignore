@@ -15,5 +15,9 @@ data/*.sqlite-wal
 web/assets/visual-check.png
 web/assets/source/kenney_new-platformer-pack/
 
+.env
+.env.*
+!.env.example
+
 .DS_Store
 Thumbs.db

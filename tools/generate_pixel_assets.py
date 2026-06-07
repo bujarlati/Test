@@ -133,6 +133,43 @@ HERO_ACTIONS = {
     "revive": {"row": 10, "frames": 8, "frameMs": 95},
 }
 
+ASSASSIN_ANCHORS = {
+    "feet": [64, 121],
+    "mainHand": [106, 58],
+    "offHand": [84, 62],
+    "ringHand": [43, 70],
+    "head": [64, 35],
+    "torso": [63, 71],
+    "halo": [66, 7],
+    "back": [58, 34],
+    "feetCenter": [64, 126],
+}
+
+FEMALE_ASSASSIN_ANCHORS = {
+    "mainHand": [88, 78],
+    "offHand": [39, 80],
+    "ringHand": [38, 83],
+    "head": [65, 39],
+    "torso": [64, 73],
+    "halo": [65, 8],
+    "back": [47, 37],
+    "feetCenter": [64, 126],
+}
+
+FEMALE_ASSASSIN_ACTIONS = {
+    "idle": {"row": 0, "frames": 16, "frameMs": 58},
+    "walk": {"row": 1, "frames": 16, "frameMs": 44},
+    "attack_unarmed": {"row": 2, "frames": 16, "frameMs": 42},
+    "attack_blade": {"row": 3, "frames": 16, "frameMs": 40},
+    "attack_dual": {"row": 4, "frames": 16, "frameMs": 38},
+    "attack_bow": {"row": 5, "frames": 16, "frameMs": 48},
+    "attack_spear": {"row": 6, "frames": 16, "frameMs": 46},
+    "attack_heavy": {"row": 7, "frames": 16, "frameMs": 52},
+    "hurt": {"row": 8, "frames": 8, "frameMs": 70},
+    "death": {"row": 9, "frames": 16, "frameMs": 70},
+    "revive": {"row": 10, "frames": 16, "frameMs": 58},
+}
+
 MONSTER_ACTIONS = {
     "idle": {"row": 0, "frames": 8, "frameMs": 120},
     "walk": {"row": 1, "frames": 8, "frameMs": 92},
@@ -394,6 +431,24 @@ def write_manifest() -> None:
         "version": "pixel-v1",
         "tileSize": 32,
         "heroes": {
+            "male_assassin": {
+                "image": "/web/assets/pixel/v1/heroes/male/assassin_sample.png",
+                "frameWidth": 128,
+                "frameHeight": 128,
+                "drawWidth": 116,
+                "drawHeight": 116,
+                "anchors": ASSASSIN_ANCHORS,
+                "animations": HERO_ACTIONS,
+            },
+            "female_assassin": {
+                "image": "/web/assets/pixel/v1/heroes/female/assassin_sample.png",
+                "frameWidth": 128,
+                "frameHeight": 128,
+                "drawWidth": 116,
+                "drawHeight": 116,
+                "anchors": FEMALE_ASSASSIN_ANCHORS,
+                "animations": FEMALE_ASSASSIN_ACTIONS,
+            },
             "male_base": {
                 "image": "/web/assets/pixel/v1/heroes/male/base.png",
                 "frameWidth": 96,

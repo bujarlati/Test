@@ -4,11 +4,44 @@ import json
 from pathlib import Path
 import unittest
 
+from tools.import_assassin_sample import read_png
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class WebStaticTests(unittest.TestCase):
+    def frame_pixels(
+        self, pixels: bytearray, sheet_width: int, frame_width: int, frame_height: int, row: int, col: int
+    ) -> bytearray:
+        frame = bytearray(frame_width * frame_height * 4)
+        for y in range(frame_height):
+            src_start = ((row * frame_height + y) * sheet_width + col * frame_width) * 4
+            dst_start = y * frame_width * 4
+            frame[dst_start:dst_start + frame_width * 4] = pixels[src_start:src_start + frame_width * 4]
+        return frame
+
+    def pixel_difference(self, left: bytearray, right: bytearray) -> int:
+        return sum(abs(a - b) for a, b in zip(left, right))
+
+    def frame_region_pixels(
+        self,
+        pixels: bytearray,
+        sheet_width: int,
+        frame_width: int,
+        frame_height: int,
+        row: int,
+        col: int,
+        y0: int,
+        y1: int,
+    ) -> bytearray:
+        region = bytearray()
+        for y in range(y0, min(frame_height, y1)):
+            src_start = ((row * frame_height + y) * sheet_width + col * frame_width) * 4
+            region.extend(pixels[src_start:src_start + frame_width * 4])
+        return region
+
+
     def test_character_creation_controls_exist(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
 
@@ -73,10 +106,12 @@ class WebStaticTests(unittest.TestCase):
 
         self.assertIn("SIMULATION_STEP_SECONDS = 0.125", script)
         self.assertIn("SIMULATION_TICK_MS = 125", script)
+        self.assertIn("VISUAL_MAX_FRAME_DELTA_MS = 500", script)
         self.assertIn("advanceVisualState", script)
         self.assertIn("applyCameraDamping", script)
         self.assertIn("drawBlendedSpriteBottom", script)
         self.assertIn("return (x - cameraX) * worldScale + 56", script)
+        self.assertIn("Math.min(VISUAL_MAX_FRAME_DELTA_MS", script)
 
     def test_sprite_animation_does_not_crossfade_transparent_frames(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -166,12 +201,117 @@ class WebStaticTests(unittest.TestCase):
         self.assertGreaterEqual(assassin["drawWidth"], 108)
         self.assertIn("attack_blade", assassin["animations"])
 
+        female_assassin = manifest["heroes"]["female_assassin"]
+        self.assertEqual(
+            female_assassin["image"],
+            "/web/assets/pixel/v1/heroes/female/pixellab_shadow_assassin.png",
+        )
+        female_assassin_path = ROOT / female_assassin["image"].lstrip("/")
+        self.assertTrue(female_assassin_path.exists(), female_assassin_path)
+        self.assertEqual(female_assassin_path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+        female_width, female_height, _female_pixels = read_png(female_assassin_path)
+        self.assertEqual(female_assassin["frameWidth"], 128)
+        self.assertEqual(female_assassin["frameHeight"], 128)
+        self.assertEqual(female_width, female_assassin["frameWidth"] * 16)
+        self.assertEqual(female_height, female_assassin["frameHeight"] * 11)
+        self.assertGreaterEqual(female_assassin["drawWidth"], 108)
+        self.assertIn("attack_blade", female_assassin["animations"])
+        self.assertIn("mainHand", female_assassin["anchors"])
+        self.assertEqual(female_assassin["animations"]["idle"]["frames"], 5)
+        self.assertEqual(female_assassin["animations"]["walk"]["frames"], 16)
+        self.assertEqual(female_assassin["animations"]["attack_blade"]["frames"], 9)
+        self.assertEqual(female_assassin["animations"]["hurt"]["frames"], 5)
+
         for key in ("slime", "thorn", "imp", "forest_boss"):
             asset = manifest["monsters"][key]
             image_path = ROOT / asset["image"].lstrip("/")
             self.assertTrue(image_path.exists(), image_path)
             self.assertEqual(image_path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
             self.assertIn("animations", asset)
+
+    def test_female_assassin_has_distinct_silhouette_from_male_assassin(self) -> None:
+        male_path = ROOT / "web" / "assets" / "pixel" / "v1" / "heroes" / "male" / "assassin_sample.png"
+        female_path = (
+            ROOT / "web" / "assets" / "pixel" / "v1" / "heroes" / "female" / "pixellab_shadow_assassin.png"
+        )
+        male_width, male_height, male_pixels = read_png(male_path)
+        female_width, female_height, female_pixels = read_png(female_path)
+
+        self.assertEqual(female_height, male_height)
+        self.assertGreater(female_width, male_width)
+        alpha_difference = sum(
+            1
+            for row in range(male_height)
+            for col in range(male_width)
+            if (male_pixels[(row * male_width + col) * 4 + 3] > 0)
+            != (female_pixels[(row * female_width + col) * 4 + 3] > 0)
+        )
+
+        self.assertGreater(alpha_difference, 2000)
+
+    def test_female_assassin_faces_right_and_uses_action_poses(self) -> None:
+        female_path = (
+            ROOT / "web" / "assets" / "pixel" / "v1" / "heroes" / "female" / "pixellab_shadow_assassin.png"
+        )
+        width, _height, pixels = read_png(female_path)
+        frame_width = 128
+        frame_height = 128
+        idle = self.frame_pixels(pixels, width, frame_width, frame_height, 0, 0)
+        walk = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 3)
+        attack = self.frame_pixels(pixels, width, frame_width, frame_height, 3, 5)
+
+        face_pixels = []
+        for y in range(64):
+            for x in range(frame_width):
+                index = (y * frame_width + x) * 4
+                r, g, b, a = idle[index:index + 4]
+                if a > 80 and r > 150 and g > 70 and b > 70 and r > g + 15 and r > b + 15:
+                    face_pixels.append(x)
+
+        self.assertGreater(len(face_pixels), 80)
+        self.assertGreater(sum(face_pixels) / len(face_pixels), 64)
+        self.assertGreater(self.pixel_difference(idle, walk), 80000)
+        self.assertGreater(self.pixel_difference(idle, attack), 80000)
+
+    def test_frontend_does_not_fake_pixel_walk_with_overlay(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertNotIn("drawPixelWalkStrideCue", script)
+        self.assertNotIn("pixelHeroWalkPose", script)
+
+    def test_female_assassin_walk_has_distinct_lower_body_from_attack(self) -> None:
+        female_path = (
+            ROOT / "web" / "assets" / "pixel" / "v1" / "heroes" / "female" / "pixellab_shadow_assassin.png"
+        )
+        width, _height, pixels = read_png(female_path)
+        frame_width = 128
+        frame_height = 128
+
+        for frame in range(2, 7):
+            walk_legs = self.frame_region_pixels(pixels, width, frame_width, frame_height, 1, frame, 64, 128)
+            attack_legs = self.frame_region_pixels(pixels, width, frame_width, frame_height, 3, frame, 64, 128)
+            self.assertGreater(self.pixel_difference(walk_legs, attack_legs), 90000)
+
+    def test_pixellab_helper_supports_skeleton_estimation(self) -> None:
+        helper = (ROOT / "tools" / "pixellab_api_generate.py").read_text(encoding="utf-8")
+
+        self.assertIn("cmd_estimate_skeleton", helper)
+        self.assertIn('"/estimate-skeleton"', helper)
+        self.assertIn('subparsers.add_parser("estimate-skeleton"', helper)
+        self.assertIn("cmd_animate_skeleton", helper)
+        self.assertIn('"/animate-with-skeleton"', helper)
+        self.assertIn('subparsers.add_parser("animate-skeleton"', helper)
+
+    def test_female_assassin_uses_pixellab_skeleton_frame_anchors(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("FEMALE_ASSASSIN_FRAME_ANCHORS", script)
+        self.assertIn("frameAnchors: FEMALE_ASSASSIN_FRAME_ANCHORS", script)
+        self.assertIn("function heroFrameSkeletonAnchorPoints(", script)
+        self.assertIn("heroFrameSkeletonAnchorPoints(actionName, frame, sprite)", script)
+        self.assertIn("'attack_blade'", script)
+        self.assertIn("attack_dual", script)
+        self.assertIn("[[104.6, 36.3, 0.08]", script)
 
     def test_pixel_hero_base_is_weaponless_and_supports_weapon_actions(self) -> None:
         generator = (ROOT / "tools" / "generate_pixel_assets.py").read_text(encoding="utf-8")
@@ -191,6 +331,7 @@ class WebStaticTests(unittest.TestCase):
         ):
             self.assertIn(animation, manifest["heroes"]["male_base"]["animations"])
             self.assertIn(animation, manifest["heroes"]["female_base"]["animations"])
+            self.assertIn(animation, manifest["heroes"]["female_assassin"]["animations"])
 
         self.assertNotIn("f1e7c4", generator)
         self.assertNotIn("right_hand[0] + 22", generator)
@@ -202,6 +343,12 @@ class WebStaticTests(unittest.TestCase):
             "function heroWeaponProfile(",
             "function weaponAnimationType(",
             "function heroEquipmentAnchorsForFrame(",
+            "entity.gender === 'female'",
+            "weaponProfile && weaponProfile.dual ? 'attack_dual' : 'attack_blade'",
+            "rawType.includes('dual') || rawType.includes('dagger_pair')",
+            "dual: Boolean(offhand) || type === 'dual'",
+            "attackProgress",
+            "attackEase",
             "attack_bow",
             "attack_dual",
             "attack_spear",
@@ -211,13 +358,22 @@ class WebStaticTests(unittest.TestCase):
         ):
             self.assertIn(marker, script)
 
+        weapon_start = script.index("function drawEquippedWeapon(")
+        weapon_end = script.index("function drawBowOnHands", weapon_start)
+        weapon_body = script[weapon_start:weapon_end]
+        self.assertLess(
+            weapon_body.index("drawWeaponOnHand(skeleton.offHand"),
+            weapon_body.index("drawWeaponOnHand(skeleton.mainHand"),
+        )
+
     def test_frontend_cache_busts_pixel_asset_paths(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
-        self.assertIn('/web/app.js?v=assassin-v12', html)
-        self.assertIn('/web/styles.css?v=assassin-v12', html)
+        self.assertIn('/web/app.js?v=assassin-v39', html)
+        self.assertIn('/web/styles.css?v=assassin-v39', html)
         self.assertIn("PIXEL_ASSET_VERSION", script)
+        self.assertIn("assassin-v39", script)
         self.assertIn("?v=${PIXEL_ASSET_VERSION}", script)
 
     def test_frontend_uses_pixel_sprite_renderer_with_fallback(self) -> None:
@@ -233,7 +389,10 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("drawSpriteSheetFrameBottom", script)
         self.assertIn("drawPixelHero", script)
         self.assertIn("male_assassin", script)
+        self.assertIn("female_assassin", script)
         self.assertIn("pixelHeroMaleAssassin", script)
+        self.assertIn("pixelHeroFemaleAssassin", script)
+        self.assertIn("entity.gender === 'female' ? 'female_assassin' : 'male_assassin'", script)
         self.assertIn("drawPixelMonster", script)
         self.assertLess(hero_body.index("drawPixelHero"), hero_body.index("drawHeroRig"))
         self.assertIn("if (!drewPixelHero)", hero_body)
@@ -282,6 +441,49 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("equipment_slots", script)
         self.assertIn("reviving", script)
         self.assertIn("复活中", script)
+
+    def test_high_frequency_snapshots_throttle_expensive_panel_renders(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        for marker in (
+            "equipmentSlotsRenderSignature: ''",
+            "equippedRenderSignature: ''",
+            "talentsRenderSignature: ''",
+            "eventsRenderSignature: ''",
+            "function renderEquipmentSlots(slots, equipped, force = true)",
+            "function renderEquipped(equipped, force = true)",
+            "function renderTalents(talents, scrolls, talentMeta, force = true)",
+            "function renderEvents(events, force = true)",
+            "renderEquipmentSlots(hero.equipment_slots || [], hero.equipped || {}, false)",
+            "renderEquipped(hero.equipped || {}, false)",
+            "renderTalents(hero.talents || [], hero.talent_scrolls || 0, snapshot.talent || {}, false)",
+            "renderEvents(snapshot.events || [], false)",
+        ):
+            self.assertIn(marker, script)
+
+    def test_tick_loop_accumulates_seconds_while_request_is_in_flight(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("tickQueuedSeconds: 0", script)
+        self.assertIn("state.tickQueuedSeconds += Math.max(0, Number(seconds) || 0)", script)
+        self.assertIn("const queuedSeconds = Math.min(1, state.tickQueuedSeconds)", script)
+        self.assertIn("state.tickQueuedSeconds = Math.max(0, state.tickQueuedSeconds - queuedSeconds)", script)
+        self.assertIn("window.setTimeout(() => tick(queuedSeconds), 0)", script)
+
+    def test_visual_state_interpolates_snapshot_targets(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        for marker in (
+            "visualTarget",
+            "spawnVisualPosition",
+            "approachVisualPosition",
+            "entity.visualTarget",
+            "next.position.x = approachVisualPosition(",
+            "lerp(currentX, targetX, amount)",
+            "if (next.type === 'hero' && movingEntity(next))",
+            "shouldSkipMovingEntityLerp(entity)",
+        ):
+            self.assertIn(marker, script)
 
     def test_frontend_draws_equipped_models_and_item_previews(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -339,7 +541,9 @@ class WebStaticTests(unittest.TestCase):
         self.assertEqual(anchors["feetCenter"], [64, 126])
         self.assertIn("const ASSASSIN_EQUIPMENT_ANCHORS", script)
         self.assertIn("offHandDrift", script)
-        self.assertIn("attack ? 8 + swing * 7 : Math.sin(phase) * 1.4", script)
+        self.assertIn("attackProgress", script)
+        self.assertIn("attackEase", script)
+        self.assertIn("-1.35 + attackEase * 1.7", script)
         self.assertIn("function ringPetAnchor(", script)
         self.assertIn("skeleton.ringHand || skeleton.offHand", script)
         self.assertIn("ring: ringPetAnchor(skeleton.ringHand || skeleton.offHand)", script)
@@ -463,6 +667,132 @@ class WebStaticTests(unittest.TestCase):
 
         self.assertIn("movementIntensity", script)
         self.assertIn("drawMovementTrail", script)
+
+    def test_walk_animation_is_distance_driven(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("WALK_PIXELS_PER_FRAME", script)
+        self.assertIn("WALK_PIXELS_PER_FRAME = 4", script)
+        self.assertIn("WALK_FRAME_SEQUENCE", script)
+        self.assertIn("[0, 1, 2, 3, 4, 5, 6, 7, 8, 9", script)
+        self.assertNotIn("[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]", script)
+        self.assertIn("function walkFrameSequence(", script)
+        self.assertIn("visualWalkDistance", script)
+        self.assertIn("next.visualWalkDistance = Number(current.visualWalkDistance || 0)", script)
+        self.assertIn("function walkCycleFrame(", script)
+        self.assertIn("walkCycleFrame(entity, frameCount)", script)
+        self.assertIn("spriteSheetFrameInfo(sprite, actionName, entity)", script)
+        self.assertNotIn("frame: Math.floor((state.lastRenderAt || 0) / frameMs) % frameCount", script)
+
+    def test_background_scroll_uses_continuous_visual_camera(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("visualCameraOffset", script)
+        self.assertIn("cameraTargetX", script)
+        self.assertIn("function visualCameraTarget(", script)
+        self.assertIn("const cameraTargetX = visualCameraTarget(hero, speed, seconds, heroVisualStep)", script)
+        self.assertIn("advanceMovingVisualCamera(cameraTargetX)", script)
+        self.assertIn("HERO_CAMERA_LEAD_SECONDS", script)
+        self.assertIn("HERO_CAMERA_MAX_LEAD", script)
+        self.assertIn("HERO_CAMERA_MAX_LAG", script)
+        self.assertIn("const fallbackCameraStep = speed * Math.max(0, seconds)", script)
+        self.assertIn("const nextCameraX = state.visual.cameraX + cameraStep", script)
+        self.assertIn("syncCameraToHeroBounds(nextCameraX, heroX)", script)
+        self.assertIn("function syncCameraToHeroBounds(", script)
+        self.assertNotIn("heroX - HERO_CAMERA_OFFSET + lead", script)
+        self.assertNotIn("snapshotTargetX + VISUAL_SNAP_DISTANCE", script)
+        self.assertIn("const visualCameraX = visualCameraOffset(cameraX)", script)
+        self.assertIn("drawGround(biome, width, height, groundY, visualCameraX, worldScale)", script)
+        self.assertIn("drawDecorations(scene.decorations || [], visualCameraX", script)
+        self.assertNotIn("applyCameraDamping(Math.max(0, Number(hero.position.x || 0) - 180)", script)
+
+    def test_moving_entities_do_not_lerp_back_to_stale_snapshots(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("function shouldSkipMovingEntityLerp(", script)
+        self.assertIn("if (shouldSkipMovingEntityLerp(entity))", script)
+        self.assertIn("if (next.type === 'hero' && movingEntity(next))", script)
+        self.assertIn("continue", script)
+
+    def test_combat_transition_keeps_visual_approach_until_hero_reaches_range(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("function transitioningIntoCombatRange(", script)
+        self.assertIn("next.visualCombatApproach = true", script)
+        self.assertIn("hero.visualCombatApproach", script)
+        self.assertIn("if (entity.visualCombatApproach) return 'walk'", script)
+        self.assertIn("function combatVisualRangeGrace(", script)
+        self.assertIn("Math.max(COMBAT_VISUAL_RANGE_GRACE, range * 0.45)", script)
+        self.assertIn("function visibleMonsterWithinAttackRange(", script)
+        self.assertIn("const visualGrace = combatVisualRangeGrace(hero)", script)
+        self.assertIn("monsterX - heroX <= Math.max(0, range) + visualGrace", script)
+        self.assertIn("clearVisualCombatApproach(hero, monster)", script)
+        self.assertIn("if (visibleMonsterWithinAttackRange(hero, monster))", script)
+
+    def test_frontend_exposes_readonly_visual_debug_state(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("window.__idleForestDebug = function idleForestDebug()", script)
+        self.assertIn("function updateIdleForestDebugDataset()", script)
+        self.assertIn("document.documentElement.dataset.idleDebug", script)
+        self.assertIn("updateIdleForestDebugDataset()", script)
+        self.assertIn("gameReady: state.gameReady", script)
+        self.assertIn("tickInFlight: state.tickInFlight", script)
+        self.assertIn("tickQueuedSeconds: Number(state.tickQueuedSeconds.toFixed(3))", script)
+        self.assertIn("tickTimerActive: Boolean(state.tickTimer)", script)
+        self.assertIn("visualHeroState: visualHero && visualHero.state", script)
+        self.assertIn("visualCombatApproach: Boolean(visualHero && visualHero.visualCombatApproach)", script)
+        self.assertIn("combatVisualGrace: visualHero ? combatVisualRangeGrace(visualHero) : null", script)
+
+    def test_moving_camera_integrates_without_frame_damping(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("function advanceMovingVisualCamera(", script)
+        self.assertIn("state.visual.cameraX = state.visual.cameraTargetX", script)
+        self.assertIn("advanceMovingVisualCamera(cameraTargetX)", script)
+        self.assertIn("advanceRestingVisualCamera(cameraTargetX, seconds)", script)
+        self.assertNotIn("targetX + VISUAL_SNAP_DISTANCE", script)
+
+    def test_female_assassin_walk_loop_repeats_first_frame_as_last(self) -> None:
+        female_path = (
+            ROOT / "web" / "assets" / "pixel" / "v1" / "heroes" / "female" / "pixellab_shadow_assassin.png"
+        )
+        width, _height, pixels = read_png(female_path)
+        frame_width = 128
+        frame_height = 128
+        first = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 0)
+        last = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 15)
+
+        self.assertLess(self.pixel_difference(first, last), 850000)
+
+    def test_female_assassin_walk_loop_starts_on_stride_pose(self) -> None:
+        female_path = (
+            ROOT / "web" / "assets" / "pixel" / "v1" / "heroes" / "female" / "pixellab_shadow_assassin.png"
+        )
+        width, _height, pixels = read_png(female_path)
+        frame_width = 128
+        frame_height = 128
+        idle_legs = self.frame_region_pixels(pixels, width, frame_width, frame_height, 0, 0, 64, 128)
+        first_legs = self.frame_region_pixels(pixels, width, frame_width, frame_height, 1, 0, 64, 128)
+        penultimate = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 14)
+        closing = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 15)
+
+        self.assertGreater(self.pixel_difference(first_legs, idle_legs), 250000)
+        self.assertLess(self.pixel_difference(penultimate, closing), 850000)
+
+    def test_monster_visual_spawn_buffer_keeps_monsters_offscreen(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("MONSTER_SPAWN_SCREEN_BUFFER = 820", script)
+        self.assertNotIn("MONSTER_VISUAL_SPAWN_AHEAD = 260", script)
+
+    def test_forest_ground_uses_smooth_low_frequency_scroll(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("function drawSmoothGroundTexture(", script)
+        self.assertIn("if (drawSmoothGroundTexture(biome, width, height, groundY, cameraX, worldScale))", script)
+        self.assertIn("cameraX * worldScale * 0.35", script)
+        self.assertIn("groundScuffSpacing", script)
 
     def test_frontend_uses_listing_price_dialog(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")

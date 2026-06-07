@@ -52,11 +52,21 @@ const SETTINGS_STORAGE_KEY = 'idleForestSettings'
 const MAX_CHARACTER_SLOTS = 3
 const SIMULATION_STEP_SECONDS = 0.125
 const SIMULATION_TICK_MS = 125
+const VISUAL_MAX_FRAME_DELTA_MS = 500
 const VISUAL_SNAP_DISTANCE = 96
+const WALK_PIXELS_PER_FRAME = 4
+const WALK_FRAME_SEQUENCE = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+const HERO_CAMERA_OFFSET = 180
+const HERO_CAMERA_LEAD_SECONDS = 0.22
+const HERO_CAMERA_MAX_LEAD = 28
+const HERO_CAMERA_MAX_LAG = 42
 const CAMERA_DAMPING = 18
+const VISUAL_ENTITY_DAMPING = 14
+const MONSTER_SPAWN_SCREEN_BUFFER = 820
+const COMBAT_VISUAL_RANGE_GRACE = 16
 const LOOT_FLOAT_DURATION_MS = 2400
 const ATTACK_EFFECT_DURATION_MS = 520
-const PIXEL_ASSET_VERSION = 'assassin-v12'
+const PIXEL_ASSET_VERSION = 'assassin-v39'
 const DEFAULT_SETTINGS = {
   paused: false,
   volume: 0.7,
@@ -233,6 +243,7 @@ const state = {
   activeCharacterId: null,
   equipmentTranslations: {},
   tickInFlight: false,
+  tickQueuedSeconds: 0,
   gameReady: false,
   selectedGender: 'male',
   creationDraft: null,
@@ -241,6 +252,10 @@ const state = {
   listingDraftItem: null,
   inventoryRenderSignature: '',
   marketRenderSignature: '',
+  equipmentSlotsRenderSignature: '',
+  equippedRenderSignature: '',
+  talentsRenderSignature: '',
+  eventsRenderSignature: '',
   marketActionInFlightIds: new Set(),
   talentEvolutionInFlight: false,
   lastRenderAt: 0,
@@ -253,6 +268,7 @@ const state = {
     entities: [],
     cameraX: 0,
     cameraY: 0,
+    cameraTargetX: 0,
     ready: false,
     cameraReady: false
   }
@@ -296,6 +312,7 @@ const ASSET_PATHS = {
   bush: '/web/assets/sprites/bush.png',
   rock: '/web/assets/sprites/rock.png',
   pixelHeroMaleAssassin: `/web/assets/pixel/v1/heroes/male/assassin_sample.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelHeroFemaleAssassin: `/web/assets/pixel/v1/heroes/female/pixellab_shadow_assassin.png?v=${PIXEL_ASSET_VERSION}`,
   pixelHeroMale: `/web/assets/pixel/v1/heroes/male/base.png?v=${PIXEL_ASSET_VERSION}`,
   pixelHeroFemale: `/web/assets/pixel/v1/heroes/female/base.png?v=${PIXEL_ASSET_VERSION}`,
   pixelSlime: `/web/assets/pixel/v1/monsters/common/slime.png?v=${PIXEL_ASSET_VERSION}`,
@@ -318,6 +335,20 @@ const PIXEL_HERO_ACTIONS = {
   revive: { row: 10, frames: 8, frameMs: 95 }
 }
 
+const FEMALE_ASSASSIN_ACTIONS = {
+  idle: { row: 0, frames: 5, frameMs: 78 },
+  walk: { row: 1, frames: 16, frameMs: 44 },
+  attack_unarmed: { row: 2, frames: 9, frameMs: 46 },
+  attack_blade: { row: 3, frames: 9, frameMs: 44 },
+  attack_dual: { row: 4, frames: 9, frameMs: 42 },
+  attack_bow: { row: 5, frames: 9, frameMs: 52 },
+  attack_spear: { row: 6, frames: 9, frameMs: 50 },
+  attack_heavy: { row: 7, frames: 9, frameMs: 56 },
+  hurt: { row: 8, frames: 5, frameMs: 70 },
+  death: { row: 9, frames: 5, frameMs: 86 },
+  revive: { row: 10, frames: 5, frameMs: 78 }
+}
+
 const PIXEL_MONSTER_ACTIONS = {
   idle: { row: 0, frames: 8, frameMs: 120 },
   walk: { row: 1, frames: 8, frameMs: 92 },
@@ -337,6 +368,43 @@ const ASSASSIN_EQUIPMENT_ANCHORS = {
   feetCenter: [64, 126]
 }
 
+const FEMALE_ASSASSIN_EQUIPMENT_ANCHORS = {
+  mainHand: [91, 72],
+  offHand: [34, 73],
+  ringHand: [38, 83],
+  head: [64, 30],
+  torso: [62, 70],
+  halo: [64, 1],
+  back: [42, 31],
+  feetCenter: [61, 126]
+}
+
+const FEMALE_ASSASSIN_FRAME_ANCHORS = {
+  walk: [[[95.2,59.0,0.74], [52.6,61.6,2.02], [135.0,95.5,0.74]], [[91.7,61.0,1.05], [59.7,63.6,1.78], [118.6,107.9,1.05]], [[83.0,62.8,1.52], [65.3,65.4,1.57], [85.5,116.7,1.52]], [[82.1,60.8,1.46], [76.6,60.5,1.12], [87.8,114.5,1.46]], [[83.4,61.0,1.35], [82.2,59.6,0.92], [95.0,113.8,1.35]], [[84.8,60.4,1.11], [81.7,57.9,0.79], [109.0,108.7,1.11]], [[80.6,61.3,1.51], [75.6,60.4,1.07], [83.7,115.2,1.51]], [[81.4,61.5,1.6], [67.5,63.7,1.47], [79.6,115.4,1.6]], [[85.7,62.6,1.39], [61.4,61.8,1.68], [95.6,115.7,1.39]], [[93.2,58.9,0.93], [55.8,59.2,1.87], [125.6,102.1,0.93]], [[96.6,57.9,0.76], [52.1,57.9,2.12], [135.9,95.0,0.76]], [[96.4,58.5,0.73], [52.3,60.7,2.07], [136.7,94.4,0.73]], [[91.8,61.3,0.99], [58.1,63.0,1.84], [121.5,106.4,0.99]], [[82.8,60.8,1.5], [66.3,63.6,1.48], [86.8,114.6,1.5]], [[94.9,58.5,0.84], [52.9,59.1,2.03], [130.8,98.9,0.84]], [[96.9,57.4,0.66], [51.5,59.9,2.09], [139.7,90.3,0.66]]],
+  attack_blade: [
+    [[95.7, 53.0, 0.79], [53.7, 53.9, -2.2], [133.9, 91.2, 0.79]],
+    [[94.3, 52.1, 0.77], [54.1, 54.5, -2.2], [133.1, 89.7, 0.77]],
+    [[89.8, 51.2, 0.65], [69.4, 57.4, -2.2], [132.7, 84.1, 0.65]],
+    [[96.9, 43.5, 0.08], [76.5, 50.6, -2.2], [150.8, 47.7, 0.08]],
+    [[104.6, 36.3, 0.08], [67.1, 55.6, -2.2], [158.5, 40.7, 0.08]],
+    [[106.5, 34.8, 0.1], [64.0, 55.3, -2.2], [160.2, 40.4, 0.1]],
+    [[106.0, 35.4, 0.08], [62.7, 53.6, -2.2], [159.8, 39.8, 0.08]],
+    [[90.9, 43.8, 0.2], [90.0, 45.3, -2.2], [143.8, 54.8, 0.2]],
+    [[95.8, 53.6, 0.81], [54.7, 54.8, -2.2], [132.9, 92.8, 0.81]]
+  ],
+  attack_dual: [
+    [[95.7, 53.0, 0.79], [53.7, 53.9, -2.2], [133.9, 91.2, 0.79]],
+    [[97.4, 53.3, 0.77], [50.3, 52.7, -2.2], [136.1, 90.9, 0.77]],
+    [[99.5, 52.1, 0.64], [47.1, 47.4, -2.2], [142.8, 84.3, 0.64]],
+    [[100.1, 48.4, 0.52], [38.0, 30.7, -2.2], [147.0, 75.0, 0.52]],
+    [[82.6, 57.4, 0.08], [35.5, 19.3, -2.2], [136.4, 61.7, 0.08]],
+    [[81.5, 46.2, -0.28], [39.2, 16.2, -2.2], [133.4, 31.4, -0.28]],
+    [[78.2, 45.5, -0.13], [41.9, 17.0, -2.2], [131.7, 38.4, -0.13]],
+    [[64.7, 46.2, 0.08], [39.9, 22.5, -2.2], [118.6, 50.5, 0.08]],
+    [[86.0, 66.3, 1.0], [105.6, 64.5, 0.2], [115.0, 111.8, 1.0]]
+  ]
+}
+
 const PIXEL_SPRITES = {
   heroes: {
     male_assassin: {
@@ -347,6 +415,16 @@ const PIXEL_SPRITES = {
       drawHeight: 116,
       anchors: ASSASSIN_EQUIPMENT_ANCHORS,
       actions: PIXEL_HERO_ACTIONS
+    },
+    female_assassin: {
+      key: 'pixelHeroFemaleAssassin',
+      frameWidth: 128,
+      frameHeight: 128,
+      drawWidth: 116,
+      drawHeight: 116,
+      anchors: FEMALE_ASSASSIN_EQUIPMENT_ANCHORS,
+      frameAnchors: FEMALE_ASSASSIN_FRAME_ANCHORS,
+      actions: FEMALE_ASSASSIN_ACTIONS
     },
     male_base: {
       key: 'pixelHeroMale',
@@ -628,6 +706,10 @@ function toggleSettingsPanel(show) {
 function resetListRenderSignatures() {
   state.inventoryRenderSignature = ''
   state.marketRenderSignature = ''
+  state.equipmentSlotsRenderSignature = ''
+  state.equippedRenderSignature = ''
+  state.talentsRenderSignature = ''
+  state.eventsRenderSignature = ''
 }
 
 function openListingPanel(item) {
@@ -671,6 +753,9 @@ function submitListingDraft() {
 
 function togglePause(paused) {
   state.settings.paused = Boolean(paused)
+  if (state.settings.paused) {
+    state.tickQueuedSeconds = 0
+  }
   saveSettings()
   applySettings()
 }
@@ -767,7 +852,11 @@ function refresh() {
 }
 
 function tick(seconds = 1) {
-  if (!state.gameReady || state.tickInFlight || state.settings.paused) {
+  if (!state.gameReady || state.settings.paused) {
+    return Promise.resolve()
+  }
+  if (state.tickInFlight) {
+    state.tickQueuedSeconds += Math.max(0, Number(seconds) || 0)
     return Promise.resolve()
   }
   state.tickInFlight = true
@@ -784,6 +873,11 @@ function tick(seconds = 1) {
     })
     .finally(() => {
       state.tickInFlight = false
+      if (state.gameReady && !state.settings.paused && state.tickQueuedSeconds > 0) {
+        const queuedSeconds = Math.min(1, state.tickQueuedSeconds)
+        state.tickQueuedSeconds = Math.max(0, state.tickQueuedSeconds - queuedSeconds)
+        window.setTimeout(() => tick(queuedSeconds), 0)
+      }
     })
 }
 
@@ -1028,6 +1122,7 @@ function confirmCharacter() {
 function startGame(snapshot) {
   state.gameReady = true
   state.settings.paused = false
+  state.tickQueuedSeconds = 0
   saveSettings()
   if (els.pauseToggle) {
     els.pauseToggle.checked = false
@@ -1055,6 +1150,7 @@ function resetVisualSmoothing() {
   state.visual.entities = []
   state.visual.cameraX = 0
   state.visual.cameraY = 0
+  state.visual.cameraTargetX = 0
   state.visual.ready = false
   state.visual.cameraReady = false
   state.lootFloaters = []
@@ -1250,12 +1346,12 @@ function applySnapshot(snapshot) {
     els.reviveText.classList.add('hidden')
   }
 
-  renderEquipmentSlots(hero.equipment_slots || [], hero.equipped || {})
-  renderEquipped(hero.equipped || {})
-  renderTalents(hero.talents || [], hero.talent_scrolls || 0, snapshot.talent || {})
+  renderEquipmentSlots(hero.equipment_slots || [], hero.equipped || {}, false)
+  renderEquipped(hero.equipped || {}, false)
+  renderTalents(hero.talents || [], hero.talent_scrolls || 0, snapshot.talent || {}, false)
   renderInventory(hero.inventory || [], false)
   renderMarket((snapshot.market && snapshot.market.active) || [], hero.id, false)
-  renderEvents(snapshot.events || [])
+  renderEvents(snapshot.events || [], false)
 }
 
 function describeRiftState(rift, forest, mode) {
@@ -1269,7 +1365,12 @@ function describeRiftState(rift, forest, mode) {
   return `${themeLabel(rift.theme)} ${rift.floor} ${t('minion')} ${rift.minions_defeated}/${rift.minions_required}`
 }
 
-function renderTalents(talents, scrolls, talentMeta) {
+function renderTalents(talents, scrolls, talentMeta, force = true) {
+  const signature = talentsSignature(talents, scrolls, talentMeta || {})
+  if (!force && state.talentsRenderSignature === signature) {
+    return
+  }
+  state.talentsRenderSignature = signature
   els.talentScrollText.textContent = `${t('talentScrolls')} ${scrolls}`
   els.talentCatalogText.textContent = `${t('catalog')} ${talentMeta.total_catalog_count || 0} · ${t('perLevel')}`
   if (!talents.length) {
@@ -1318,10 +1419,52 @@ function evolveTalent(button) {
     })
 }
 
-function renderEquipmentSlots(slots, equipped) {
+function equipmentSlotsSignature(slots, equipped) {
+  return JSON.stringify({
+    slots: slots.map(({ slot, item }) => ({ slot, item: item ? itemSignature(item) : null })),
+    equipped: Object.keys(equipped || {})
+      .sort()
+      .map((slot) => [slot, itemSignature(equipped[slot])])
+  })
+}
+
+function equippedSignature(equipped) {
+  return Object.keys(equipped || {})
+    .sort()
+    .map((slot) => `${slot}:${itemSignature(equipped[slot])}`)
+    .join('|')
+}
+
+function talentsSignature(talents, scrolls, talentMeta) {
+  return JSON.stringify({
+    scrolls,
+    total: talentMeta.total_catalog_count || 0,
+    talents: talents.map((talent) => ({
+      id: talent.id,
+      tier: talent.tier,
+      name: talent.name,
+      description: talent.description,
+      effects: talent.effects
+    }))
+  })
+}
+
+function eventsSignature(events) {
+  return events
+    .slice(-16)
+    .map((event) => JSON.stringify({ tick: event.tick, kind: event.kind, message: event.message, data: event.data || {} }))
+    .join('|')
+}
+
+function renderEquipmentSlots(slots, equipped, force = true) {
   const normalized = slots.length
     ? slots
     : Object.keys(SLOT_LABELS).map((slot) => ({ slot, item: equipped[slot] || null }))
+  const signature = equipmentSlotsSignature(normalized, equipped || {})
+  if (!force && state.equipmentSlotsRenderSignature === signature) {
+    return
+  }
+  state.equipmentSlotsRenderSignature = signature
   els.equipmentSlotList.innerHTML = normalized
     .map(({ slot, item }) => {
       const empty = !item
@@ -1342,7 +1485,12 @@ function renderEquipmentSlots(slots, equipped) {
     .join('')
 }
 
-function renderEquipped(equipped) {
+function renderEquipped(equipped, force = true) {
+  const signature = equippedSignature(equipped || {})
+  if (!force && state.equippedRenderSignature === signature) {
+    return
+  }
+  state.equippedRenderSignature = signature
   const items = Object.keys(equipped).map((slot) => equipped[slot])
   if (!items.length) {
     els.equippedList.innerHTML = `<div class="empty">${t('noEquipment')}</div>`
@@ -1459,7 +1607,12 @@ function renderMarket(listings, heroId, force = true) {
     .join('')
 }
 
-function renderEvents(events) {
+function renderEvents(events, force = true) {
+  const signature = eventsSignature(events)
+  if (!force && state.eventsRenderSignature === signature) {
+    return
+  }
+  state.eventsRenderSignature = signature
   els.eventList.innerHTML = events
     .slice(-16)
     .reverse()
@@ -1845,7 +1998,38 @@ function drawBlendedSpriteBottom(a, b, centerX, bottomY, width, height, flip = f
   return drawSpriteBottom(key, centerX, bottomY, width, height, flip)
 }
 
-function spriteSheetFrameInfo(sprite, actionName) {
+function movingEntity(entity) {
+  return entity && (entity.state === 'walk' || entity.state === 'approach' || entity.visualCombatApproach)
+}
+
+function accumulateWalkDistance(entity, fromX, toX) {
+  if (!entity) {
+    return
+  }
+  if (!movingEntity(entity)) {
+    entity.visualWalkDistance = 0
+    return
+  }
+  const delta = Math.abs(Number(toX || 0) - Number(fromX || 0))
+  if (!Number.isFinite(delta) || delta <= 0) {
+    return
+  }
+  entity.visualWalkDistance = Number((Number(entity.visualWalkDistance || 0) + delta).toFixed(3))
+}
+
+function walkCycleFrame(entity, frameCount) {
+  const sequence = walkFrameSequence(frameCount)
+  const distance = Math.max(0, Number(entity && entity.visualWalkDistance || 0))
+  return sequence[Math.floor(distance / WALK_PIXELS_PER_FRAME) % sequence.length] || 0
+}
+
+function walkFrameSequence(frameCount) {
+  const maxFrame = Math.max(0, Number(frameCount || 1) - 1)
+  const sequence = WALK_FRAME_SEQUENCE.filter((frame) => frame <= maxFrame)
+  return sequence.length ? sequence : [0]
+}
+
+function spriteSheetFrameInfo(sprite, actionName, entity) {
   if (!sprite || !sprite.actions) {
     return null
   }
@@ -1855,15 +2039,17 @@ function spriteSheetFrameInfo(sprite, actionName) {
   }
   const frameCount = Math.max(1, Number(action.frames || 1))
   const frameMs = Math.max(1, Number(action.frameMs || 100))
+  const timedFrame = Math.floor((state.lastRenderAt || 0) / frameMs) % frameCount
+  const frame = actionName === 'walk' ? walkCycleFrame(entity, frameCount) : timedFrame
   return {
     action,
-    frame: Math.floor((state.lastRenderAt || 0) / frameMs) % frameCount,
+    frame,
     frameCount,
     frameMs
   }
 }
 
-function drawSpriteSheetFrameBottom(sprite, actionName, centerX, bottomY, flip = false) {
+function drawSpriteSheetFrameBottom(sprite, actionName, centerX, bottomY, flip = false, entity = null) {
   if (!sprite || !sprite.key) {
     return false
   }
@@ -1871,7 +2057,7 @@ function drawSpriteSheetFrameBottom(sprite, actionName, centerX, bottomY, flip =
   if (!image) {
     return false
   }
-  const frameInfo = spriteSheetFrameInfo(sprite, actionName)
+  const frameInfo = spriteSheetFrameInfo(sprite, actionName, entity)
   if (!frameInfo) {
     return false
   }
@@ -1928,8 +2114,99 @@ function drawTiledSprite(key, x, y, width, height, tileSize, offset = 0) {
 function cloneEntity(entity) {
   return {
     ...entity,
-    position: entity.position ? { ...entity.position } : entity.position
+    position: entity.position ? { ...entity.position } : entity.position,
+    visualTarget: entity.visualTarget ? { ...entity.visualTarget } : entity.visualTarget,
+    visualWalkDistance: Number(entity.visualWalkDistance || 0)
   }
+}
+
+function clonePosition(position) {
+  return position ? { x: Number(position.x || 0), y: Number(position.y || 0) } : null
+}
+
+function approachVisualPosition(current, target, maxStep) {
+  const currentValue = Number(current || 0)
+  const targetValue = Number(target || 0)
+  if (!Number.isFinite(currentValue) || !Number.isFinite(targetValue)) {
+    return Number.isFinite(targetValue) ? targetValue : currentValue
+  }
+  const delta = targetValue - currentValue
+  if (Math.abs(delta) <= maxStep) {
+    return targetValue
+  }
+  return currentValue + Math.sign(delta) * maxStep
+}
+
+function spawnVisualPosition(entity, snapshot, currentEntities) {
+  const target = clonePosition(entity.position)
+  if (!target || entity.type !== 'monster') {
+    return target
+  }
+  const currentHero = currentEntities.find((candidate) => candidate.type === 'hero' && candidate.position)
+  const snapshotHero = snapshot.scene.entities.find((candidate) => candidate.type === 'hero' && candidate.position)
+  const heroX = Number((currentHero && currentHero.position && currentHero.position.x)
+    || (snapshotHero && snapshotHero.position && snapshotHero.position.x)
+    || 0)
+  if (!Number.isFinite(heroX)) {
+    return target
+  }
+  return {
+    ...target,
+    x: Math.max(target.x, heroX + MONSTER_SPAWN_SCREEN_BUFFER)
+  }
+}
+
+function transitioningIntoCombatRange(current, next) {
+  if (!current || !next || next.type !== 'hero' || next.state !== 'combat' || !movingEntity(current)) {
+    return false
+  }
+  const currentX = Number(current.position && current.position.x)
+  const targetX = Number(next.position && next.position.x)
+  return Number.isFinite(currentX) && Number.isFinite(targetX) && currentX < targetX - 0.5
+}
+
+function combatVisualRangeGrace(hero) {
+  const range = Number(hero && hero.attack_range || 0)
+  if (!Number.isFinite(range)) {
+    return COMBAT_VISUAL_RANGE_GRACE
+  }
+  return Math.max(COMBAT_VISUAL_RANGE_GRACE, range * 0.45)
+}
+
+function visibleMonsterWithinAttackRange(hero, monster) {
+  if (!hero || !monster || !hero.position || !monster.position) {
+    return false
+  }
+  const heroX = Number(hero.position.x)
+  const monsterX = Number(monster.position.x)
+  const range = Number(hero.attack_range || 0)
+  if (!Number.isFinite(heroX) || !Number.isFinite(monsterX) || !Number.isFinite(range)) {
+    return false
+  }
+  const visualGrace = combatVisualRangeGrace(hero)
+  return monsterX - heroX <= Math.max(0, range) + visualGrace
+}
+
+function clearVisualCombatApproach(hero, monster = null) {
+  if (!hero || !hero.visualCombatApproach) {
+    return
+  }
+  if (visibleMonsterWithinAttackRange(hero, monster)) {
+    hero.visualCombatApproach = false
+    hero.visualWalkDistance = 0
+    return
+  }
+  if (!hero.position || !hero.visualTarget) {
+    return
+  }
+  const targetX = Number(hero.visualTarget.x)
+  const currentX = Number(hero.position.x)
+  if (!Number.isFinite(targetX) || !Number.isFinite(currentX) || currentX < targetX - 0.5) {
+    return
+  }
+  hero.position.x = Number(targetX.toFixed(3))
+  hero.visualCombatApproach = false
+  hero.visualWalkDistance = 0
 }
 
 function snapVisualStateToSnapshot(snapshot) {
@@ -1943,15 +2220,33 @@ function snapVisualStateToSnapshot(snapshot) {
   state.visual.entities = (snapshot.scene.entities || []).map((entity) => {
     const current = currentEntities.find((candidate) => candidate.id === entity.id)
     const next = cloneEntity(entity)
+    next.visualTarget = clonePosition(entity.position)
+    if (current) {
+      next.visualWalkDistance = Number(current.visualWalkDistance || 0)
+    }
     if (!current || !current.position || !next.position) {
+      const spawnPosition = spawnVisualPosition(next, snapshot, currentEntities)
+      if (spawnPosition) {
+        next.position = spawnPosition
+      }
       return next
     }
     const currentX = Number(current.position.x || 0)
     const nextX = Number(next.position.x || 0)
+    if (transitioningIntoCombatRange(current, next)) {
+      next.position.x = currentX
+      next.position.y = Number(current.position.y || next.position.y || 0)
+      next.visualCombatApproach = true
+      return next
+    }
+    if (next.type === 'hero' && movingEntity(next)) {
+      next.position.x = currentX
+      next.position.y = Number(current.position.y || next.position.y || 0)
+      return next
+    }
     if (Math.abs(nextX - currentX) > VISUAL_SNAP_DISTANCE) {
-      if (entity.type === 'hero') {
-        shouldSnapCamera = true
-      }
+      next.position.x = approachVisualPosition(currentX, nextX, VISUAL_SNAP_DISTANCE)
+      next.position.y = Number(current.position.y || next.position.y || 0)
       return next
     }
     next.position.x = currentX
@@ -1963,8 +2258,49 @@ function snapVisualStateToSnapshot(snapshot) {
     const camera = snapshot.scene.camera || { x: 0, y: 0 }
     state.visual.cameraX = Number(camera.x || 0)
     state.visual.cameraY = Number(camera.y || 0)
+    state.visual.cameraTargetX = Number(camera.x || 0)
     state.visual.cameraReady = true
   }
+}
+
+function syncCameraToHeroBounds(cameraX, heroX) {
+  const nextCameraX = Math.max(0, Number(cameraX || 0))
+  if (!Number.isFinite(heroX)) {
+    return nextCameraX
+  }
+  const center = Math.max(0, heroX - HERO_CAMERA_OFFSET)
+  const minCameraX = Math.max(0, center - HERO_CAMERA_MAX_LAG)
+  const maxCameraX = Math.max(0, center + HERO_CAMERA_MAX_LEAD)
+  return Math.max(minCameraX, Math.min(maxCameraX, nextCameraX))
+}
+
+function visualCameraTarget(hero, speed, seconds, visualStep = null) {
+  const snapshotTargetX = Math.max(0, Number(hero && hero.visualTarget && hero.visualTarget.x || 0) - HERO_CAMERA_OFFSET)
+  const heroX = Number(hero && hero.position && hero.position.x || 0)
+  if (movingEntity(hero) && Number.isFinite(speed) && speed > 0) {
+    const fallbackCameraStep = speed * Math.max(0, seconds)
+    const cameraStep = Number.isFinite(visualStep) ? Math.max(0, Number(visualStep)) : fallbackCameraStep
+    const nextCameraX = state.visual.cameraX + cameraStep
+    return syncCameraToHeroBounds(nextCameraX, heroX)
+  }
+  return Math.max(0, Number.isFinite(heroX) ? heroX - HERO_CAMERA_OFFSET : snapshotTargetX)
+}
+
+function advanceMovingVisualCamera(cameraTargetX) {
+  const targetX = Number(cameraTargetX || 0)
+  state.visual.cameraTargetX = Number.isFinite(targetX) ? targetX : 0
+  state.visual.cameraX = state.visual.cameraTargetX
+  state.visual.cameraY = 0
+}
+
+function advanceRestingVisualCamera(cameraTargetX, seconds) {
+  const targetX = Number(cameraTargetX || 0)
+  state.visual.cameraTargetX = Number.isFinite(targetX) ? targetX : 0
+  applyCameraDamping(state.visual.cameraTargetX, 0, seconds * 1000)
+}
+
+function shouldSkipMovingEntityLerp(entity) {
+  return entity && entity.type === 'hero' && movingEntity(entity)
 }
 
 function advanceVisualState(seconds) {
@@ -1980,21 +2316,50 @@ function advanceVisualState(seconds) {
   }
   const monster = state.visual.entities.find((entity) => entity.type === 'monster' && entity.position)
   const speed = Number((state.snapshot && state.snapshot.hero && state.snapshot.hero.speed) || hero.speed || 0)
-  if ((hero.state === 'walk' || hero.state === 'approach') && Number.isFinite(speed) && speed > 0) {
+  const amount = 1 - Math.exp(-(Math.max(0, seconds)) * VISUAL_ENTITY_DAMPING)
+  let heroVisualStep = 0
+  if (movingEntity(hero) && Number.isFinite(speed) && speed > 0) {
     let nextX = Number(hero.position.x || 0) + speed * Math.max(0, seconds)
     if (monster) {
       const range = Number(hero.attack_range || (state.snapshot && state.snapshot.hero && state.snapshot.hero.attack_range) || 0)
-      nextX = Math.min(nextX, Number(monster.position.x || nextX) - range)
-    }
-    const serverX = Number(state.snapshot && state.snapshot.hero && state.snapshot.hero.position && state.snapshot.hero.position.x)
-    if (Number.isFinite(serverX)) {
-      nextX = Math.min(nextX, serverX + VISUAL_SNAP_DISTANCE)
+      const monsterTargetX = Number((monster.visualTarget && monster.visualTarget.x) || monster.position.x || nextX)
+      nextX = Math.min(nextX, monsterTargetX - range)
     }
     if (Number.isFinite(nextX)) {
+      const previousX = Number(hero.position.x || 0)
       hero.position.x = Number(nextX.toFixed(3))
+      heroVisualStep = Math.max(0, hero.position.x - previousX)
+      accumulateWalkDistance(hero, previousX, hero.position.x)
     }
   }
-  applyCameraDamping(Math.max(0, Number(hero.position.x || 0) - 180), 0, seconds * 1000)
+  for (const entity of state.visual.entities) {
+    if (!entity.position || !entity.visualTarget) {
+      continue
+    }
+    const targetX = Number(entity.visualTarget.x || entity.position.x || 0)
+    const targetY = Number(entity.visualTarget.y || entity.position.y || 0)
+    const currentX = Number(entity.position.x || 0)
+    const currentY = Number(entity.position.y || 0)
+    if (shouldSkipMovingEntityLerp(entity)) {
+      entity.position.y = Number(lerp(currentY, targetY, amount).toFixed(3))
+      continue
+    }
+    entity.position.x = Number(lerp(currentX, targetX, amount).toFixed(3))
+    entity.position.y = Number(lerp(currentY, targetY, amount).toFixed(3))
+    accumulateWalkDistance(entity, currentX, entity.position.x)
+  }
+  clearVisualCombatApproach(hero, monster)
+  const cameraTargetX = visualCameraTarget(hero, speed, seconds, heroVisualStep)
+  if (movingEntity(hero)) {
+    advanceMovingVisualCamera(cameraTargetX)
+  } else {
+    advanceRestingVisualCamera(cameraTargetX, seconds)
+  }
+}
+
+function visualCameraOffset(cameraX) {
+  const offset = Number(cameraX || 0)
+  return Number.isFinite(offset) ? offset : 0
 }
 
 function visualSnapshot() {
@@ -2014,6 +2379,56 @@ function visualSnapshot() {
       entities: (state.visual.entities || []).map(cloneEntity)
     }
   }
+}
+
+window.__idleForestDebug = function idleForestDebug() {
+  const visualHero = (state.visual.entities || []).find((entity) => entity.type === 'hero')
+  const visualMonster = (state.visual.entities || []).find((entity) => entity.type === 'monster')
+  const snapshotHero = state.snapshot && state.snapshot.scene
+    ? (state.snapshot.scene.entities || []).find((entity) => entity.type === 'hero')
+    : null
+  const snapshotMonster = state.snapshot && state.snapshot.scene
+    ? (state.snapshot.scene.entities || []).find((entity) => entity.type === 'monster')
+    : null
+  const visualDistance = visualHero && visualMonster && visualHero.position && visualMonster.position
+    ? Number((Number(visualMonster.position.x || 0) - Number(visualHero.position.x || 0)).toFixed(2))
+    : null
+  const snapshotDistance = snapshotHero && snapshotMonster && snapshotHero.position && snapshotMonster.position
+    ? Number((Number(snapshotMonster.position.x || 0) - Number(snapshotHero.position.x || 0)).toFixed(2))
+    : null
+  const visualHeroX = visualHero && visualHero.position ? Number(Number(visualHero.position.x || 0).toFixed(2)) : null
+  const visualMonsterX = visualMonster && visualMonster.position ? Number(Number(visualMonster.position.x || 0).toFixed(2)) : null
+  const snapshotHeroX = snapshotHero && snapshotHero.position ? Number(Number(snapshotHero.position.x || 0).toFixed(2)) : null
+  const snapshotMonsterX = snapshotMonster && snapshotMonster.position ? Number(Number(snapshotMonster.position.x || 0).toFixed(2)) : null
+  return {
+    gameReady: state.gameReady,
+    tickInFlight: state.tickInFlight,
+    tickQueuedSeconds: Number(state.tickQueuedSeconds.toFixed(3)),
+    tickTimerActive: Boolean(state.tickTimer),
+    paused: Boolean(state.settings.paused),
+    snapshotTick: state.snapshot && state.snapshot.time ? state.snapshot.time.tick : null,
+    snapshotHeroState: snapshotHero && snapshotHero.state,
+    snapshotHeroX,
+    snapshotMonsterX,
+    snapshotDistance,
+    visualHeroState: visualHero && visualHero.state,
+    visualHeroX,
+    visualMonsterX,
+    visualCombatApproach: Boolean(visualHero && visualHero.visualCombatApproach),
+    visualDistance,
+    visualSpeed: visualHero && visualHero.speed,
+    attackRange: visualHero && visualHero.attack_range,
+    combatVisualGrace: visualHero ? combatVisualRangeGrace(visualHero) : null,
+    attackEffects: state.attackEffects.length,
+    lastRenderAt: state.lastRenderAt
+  }
+}
+
+function updateIdleForestDebugDataset() {
+  if (!document || !document.documentElement || !window.__idleForestDebug) {
+    return
+  }
+  document.documentElement.dataset.idleDebug = JSON.stringify(window.__idleForestDebug())
 }
 
 function applyCameraDamping(targetX, targetY, frameDelta) {
@@ -2038,10 +2453,11 @@ function lerp(a, b, amount) {
 
 function draw(timestamp) {
   const previousRenderAt = state.lastRenderAt || timestamp
-  const frameDelta = Math.min(50, Math.max(0, timestamp - previousRenderAt))
+  const frameDelta = Math.min(VISUAL_MAX_FRAME_DELTA_MS, Math.max(0, timestamp - previousRenderAt))
   state.lastRenderAt = timestamp
   const rect = canvas.getBoundingClientRect()
   advanceVisualState(frameDelta / 1000)
+  updateIdleForestDebugDataset()
   renderScene(visualSnapshot(), rect.width, rect.height)
   window.requestAnimationFrame(draw)
 }
@@ -2050,18 +2466,19 @@ function renderScene(snapshot, width, height) {
   const scene = snapshot && snapshot.scene
   const biome = scene ? scene.biome : 'forest'
   const cameraX = scene && scene.camera ? scene.camera.x : 0
+  const visualCameraX = visualCameraOffset(cameraX)
   const groundY = Math.round(height * 0.72)
   const worldScale = Math.max(0.78, Math.min(1.32, width / 720))
 
   drawBackground(biome, width, height)
   if (scene) {
-    drawDecorations(scene.decorations || [], cameraX, groundY, worldScale, width, 'back', biome)
-    drawGround(biome, width, height, groundY, cameraX, worldScale)
-    drawDecorations(scene.decorations || [], cameraX, groundY, worldScale, width, 'front', biome)
-    drawCombatRange(scene.entities || [], cameraX, groundY, worldScale)
-    drawEntities(scene.entities || [], cameraX, groundY, worldScale)
-    drawAttackEffects(scene, cameraX, groundY, worldScale)
-    drawLootFloaters(scene, cameraX, groundY, worldScale)
+    drawDecorations(scene.decorations || [], visualCameraX, groundY, worldScale, width, 'back', biome)
+    drawGround(biome, width, height, groundY, visualCameraX, worldScale)
+    drawDecorations(scene.decorations || [], visualCameraX, groundY, worldScale, width, 'front', biome)
+    drawCombatRange(scene.entities || [], visualCameraX, groundY, worldScale)
+    drawEntities(scene.entities || [], visualCameraX, groundY, worldScale)
+    drawAttackEffects(scene, visualCameraX, groundY, worldScale)
+    drawLootFloaters(scene, visualCameraX, groundY, worldScale)
   } else {
     drawGround('forest', width, height, groundY, 0, worldScale)
     centeredText(width, height, '等待后端连接')
@@ -2255,6 +2672,15 @@ function drawGround(biome, width, height, groundY, cameraX, worldScale) {
   }
   ctx.fillStyle = grad
   ctx.fillRect(0, groundY, width, height - groundY)
+  if (drawSmoothGroundTexture(biome, width, height, groundY, cameraX, worldScale)) {
+    ctx.strokeStyle = 'rgba(245, 236, 214, 0.24)'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(0, groundY + 1)
+    ctx.lineTo(width, groundY + 1)
+    ctx.stroke()
+    return
+  }
   const tileKey = biome === 'cave' || biome === 'castle'
     ? 'groundStone'
     : biome === 'sky'
@@ -2583,20 +3009,26 @@ function pixelHeroAction(entity, weaponProfile = heroWeaponProfile(entity)) {
   if (!entity) return 'idle'
   if (entity.state === 'reviving') return 'revive'
   if (Number(entity.hp || 0) <= 0) return 'death'
-  if (entity.state === 'combat') return weaponAnimationType(weaponProfile)
+  if (entity.visualCombatApproach) return 'walk'
+  if (entity.state === 'combat') {
+    if (entity.gender === 'female') {
+      return weaponProfile && weaponProfile.dual ? 'attack_dual' : 'attack_blade'
+    }
+    return weaponAnimationType(weaponProfile)
+  }
   if (entity.state === 'walk' || entity.state === 'approach') return 'walk'
   return 'idle'
 }
 
 function pixelHeroRenderInfo(skeleton, entity) {
-  const key = entity.gender === 'female' ? 'female_base' : 'male_assassin'
+  const key = entity.gender === 'female' ? 'female_assassin' : 'male_assassin'
   const sprite = PIXEL_SPRITES.heroes[key]
   if (!sprite) {
     return false
   }
   const weaponProfile = heroWeaponProfile(entity)
   const actionName = pixelHeroAction(entity, weaponProfile)
-  const frameInfo = spriteSheetFrameInfo(sprite, actionName)
+  const frameInfo = spriteSheetFrameInfo(sprite, actionName, entity)
   const bottomY = Math.max(skeleton.leftFoot.y, skeleton.rightFoot.y) + 4
   return {
     sprite,
@@ -2618,7 +3050,8 @@ function drawPixelHero(skeleton, entity, renderInfo = null) {
     info.actionName,
     info.centerX,
     info.bottomY,
-    false
+    false,
+    entity
   )
   if (!drew) {
     return false
@@ -2631,7 +3064,8 @@ function drawPixelHero(skeleton, entity, renderInfo = null) {
 }
 
 function heroEquipmentAnchorsForFrame(skeleton, entity, actionName, frame, sprite) {
-  const source = heroPixelAnchorPoints(actionName, frame, sprite.anchors)
+  const source = heroFrameSkeletonAnchorPoints(actionName, frame, sprite)
+    || heroPixelAnchorPoints(actionName, frame, sprite.anchors, sprite.actions && sprite.actions[actionName])
     || heroPixelHandPoints(actionName, frame, entity && entity.gender === 'female')
   const centerX = skeleton.hips.x + 1
   const bottomY = Math.max(skeleton.leftFoot.y, skeleton.rightFoot.y) + 4
@@ -2668,13 +3102,55 @@ function heroEquipmentAnchorsForFrame(skeleton, entity, actionName, frame, sprit
   }
 }
 
-function heroPixelAnchorPoints(actionName, frame, anchors) {
+function heroFrameSkeletonAnchorPoints(actionName, frame, sprite) {
+  const frameAnchors = sprite && sprite.frameAnchors
+  if (!frameAnchors) {
+    return null
+  }
+  const aliases = [actionName]
+  if (actionName.startsWith('attack_') && actionName !== 'attack_bow') {
+    aliases.push('attack_blade')
+  }
+  const sequence = aliases.map((name) => frameAnchors[name]).find((value) => Array.isArray(value))
+  if (!sequence || !sequence.length) {
+    return null
+  }
+  const [mainRaw, offRaw, tipRaw] = sequence[Math.abs(frame) % sequence.length]
+  const triplet = (value) => ({ x: value[0], y: value[1], angle: value[2] || 0 })
+  const basePoint = (name, fallback, angle = 0) => {
+    const value = sprite.anchors && sprite.anchors[name] ? sprite.anchors[name] : fallback
+    return { x: value[0], y: value[1], angle }
+  }
+  const mainHand = triplet(mainRaw)
+  const offHand = triplet(offRaw)
+  return {
+    frameBased: true,
+    leftHand: offHand,
+    rightHand: mainHand,
+    ringHand: basePoint('ringHand', [38, 83]),
+    head: basePoint('head', [64, 30]),
+    torso: basePoint('torso', [62, 70]),
+    halo: basePoint('halo', [64, 1]),
+    back: basePoint('back', [42, 31]),
+    feetCenter: basePoint('feetCenter', [61, 126]),
+    weaponTip: tipRaw ? triplet(tipRaw) : {
+      x: mainHand.x + Math.cos(mainHand.angle) * 54,
+      y: mainHand.y + Math.sin(mainHand.angle) * 54,
+      angle: mainHand.angle
+    }
+  }
+}
+
+function heroPixelAnchorPoints(actionName, frame, anchors, action) {
   if (!anchors) {
     return null
   }
-  const phase = (frame / 8) * Math.PI * 2
+  const frameCount = Math.max(1, Number(action && action.frames || 8))
+  const phase = (frame / Math.max(1, frameCount - 1)) * Math.PI * 2
   const attack = actionName.startsWith('attack')
-  const swing = attack ? Math.sin(phase) : 0
+  const attackProgress = attack ? Math.min(1, frame / Math.max(1, frameCount - 1)) : 0
+  const attackEase = attack ? smoothstep(attackProgress) : 0
+  const swing = attack ? Math.sin(attackProgress * Math.PI) : 0
   const bob = Math.sin(phase) * 1.2
   const point = (name, fallback, dx = 0, dy = 0, angle = 0) => {
     const value = anchors[name] || fallback
@@ -2684,14 +3160,25 @@ function heroPixelAnchorPoints(actionName, frame, anchors) {
       angle
     }
   }
-  const mainAngle = attack ? -0.82 + swing * 0.26 : -0.18
-  const offAngle = attack && actionName === 'attack_dual' ? -2.65 - swing * 0.2 : -2.35
-  const mainHand = point('mainHand', [82, 75], attack ? swing * 8 : 0, attack ? -6 + swing * 2 : bob, mainAngle)
-  const offHandDrift = attack ? 8 + swing * 7 : Math.sin(phase) * 1.4
-  const offHandLift = attack ? -10 + swing * 2 : bob * 0.6
+  const bowAttack = actionName === 'attack_bow'
+  const mainAngle = attack
+    ? bowAttack
+      ? -0.08
+      : -1.35 + attackEase * 1.7
+    : -0.18
+  const offAngle = attack && actionName === 'attack_dual' ? -2.6 + attackEase * 0.7 : -2.35
+  const mainHand = point(
+    'mainHand',
+    [82, 75],
+    attack ? -7 * swing + attackEase * 7 : 0,
+    attack ? -13 * swing + attackEase * 7 : bob,
+    mainAngle
+  )
+  const offHandDrift = attack ? 4 + swing * 6 - attackEase * 2 : Math.sin(phase) * 1.4
+  const offHandLift = attack ? -7 + swing * 4 : bob * 0.6
   const offHand = point('offHand', [47, 78], offHandDrift, offHandLift, offAngle)
-  const ringHandDrift = attack ? -2 + swing * 3 : Math.sin(phase) * 1.2
-  const ringHandLift = attack ? -5 + swing * 2 : bob * 0.6
+  const ringHandDrift = attack ? 1 + swing * 2 : Math.sin(phase) * 1.2
+  const ringHandLift = attack ? -4 + swing * 2 : bob * 0.6
   const ringHand = point('ringHand', [53, 68], ringHandDrift, ringHandLift, offAngle)
   return {
     frameBased: true,
@@ -3054,6 +3541,42 @@ function drawHeroTorso(skeleton, entity) {
   ctx.moveTo(skeleton.torso.x - 7, skeleton.torso.y - 9)
   ctx.lineTo(skeleton.torso.x + 8, skeleton.torso.y + 8)
   ctx.stroke()
+}
+
+function drawSmoothGroundTexture(biome, width, height, groundY, cameraX, worldScale) {
+  if (biome !== 'forest' && biome !== 'deep_forest') {
+    return false
+  }
+  const scroll = cameraX * worldScale * 0.35
+  const groundScuffSpacing = 92
+  ctx.save()
+  ctx.fillStyle = biome === 'deep_forest' ? 'rgba(76, 92, 58, 0.16)' : 'rgba(105, 132, 67, 0.18)'
+  for (let x = -groundScuffSpacing - (scroll % groundScuffSpacing); x < width + groundScuffSpacing; x += groundScuffSpacing) {
+    const y = groundY + 16 + Math.sin((x + scroll) * 0.018) * 5
+    ctx.beginPath()
+    ctx.ellipse(x, y, 34, 5, -0.12, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.strokeStyle = biome === 'deep_forest' ? 'rgba(93, 120, 69, 0.24)' : 'rgba(122, 155, 80, 0.26)'
+  ctx.lineWidth = 2
+  for (let layer = 0; layer < 3; layer += 1) {
+    const layerScroll = scroll * (0.45 + layer * 0.18)
+    const y = groundY + 28 + layer * 22
+    ctx.beginPath()
+    ctx.moveTo(0, y)
+    for (let x = -24; x <= width + 24; x += 24) {
+      ctx.lineTo(x, y + Math.sin((x + layerScroll) * 0.024 + layer * 1.7) * (3 + layer))
+    }
+    ctx.stroke()
+  }
+  ctx.fillStyle = biome === 'deep_forest' ? 'rgba(18, 42, 27, 0.38)' : 'rgba(40, 83, 44, 0.34)'
+  for (let x = -72 - ((scroll * 0.72) % 72); x < width + 72; x += 72) {
+    const bladeBase = groundY - 5 + Math.sin((x + scroll) * 0.03) * 2
+    ctx.fillRect(x, bladeBase, 22, 4)
+    ctx.fillRect(x + 27, bladeBase + 3, 16, 3)
+  }
+  ctx.restore()
+  return true
 }
 
 function drawHeroHead(skeleton, entity) {
@@ -3444,15 +3967,15 @@ function drawEquippedWeapon(skeleton, entity) {
     drawBowOnHands(skeleton.offHand, skeleton.mainHand, weaponProfile.main)
     return
   }
-  if (equipped.weapon) {
-    drawWeaponOnHand(skeleton.mainHand, equipped.weapon)
-  } else if (entity.weapon) {
-    drawWeaponOnHand(skeleton.mainHand, entity.weapon)
-  }
   if (entity.offhand_weapon) {
     drawWeaponOnHand(skeleton.offHand, entity.offhand_weapon, true)
   } else if (weaponProfile.dual && weaponProfile.main) {
     drawWeaponOnHand(skeleton.offHand, weaponProfile.main, true)
+  }
+  if (equipped.weapon) {
+    drawWeaponOnHand(skeleton.mainHand, equipped.weapon)
+  } else if (entity.weapon) {
+    drawWeaponOnHand(skeleton.mainHand, entity.weapon)
   }
 }
 
@@ -3603,7 +4126,8 @@ function drawPixelMonster(x, y, entity) {
     pixelMonsterAction(entity),
     x,
     y,
-    monsterFacingFlip(entity)
+    monsterFacingFlip(entity),
+    entity
   )
 }
 

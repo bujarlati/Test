@@ -57,6 +57,8 @@ class WebStaticTests(unittest.TestCase):
             "expText",
             "expProgressBar",
             "reviveText",
+            "stageLoading",
+            "stageLoadingText",
             "equipmentSlotList",
             "newCharacterButton",
         ):
@@ -177,7 +179,10 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("drawHeroHealthBar", script)
         self.assertLess(body.index("drawHeroRig"), body.index("drawEquippedWeapon"))
         self.assertLess(body.index("drawEquippedWeapon"), body.index("drawHeroHealthBar"))
-        self.assertIn("skeleton.head.y - 24", script)
+        self.assertIn("function heroHealthBarAnchor(", script)
+        self.assertIn("haloAnchorFromSkeleton(skeleton)", script)
+        self.assertIn("Math.min(head.y - 92, halo.y - 26)", script)
+        self.assertNotIn("skeleton.head.y - 24", script)
 
     def test_pixel_art_sprite_manifest_and_assets_exist(self) -> None:
         manifest_path = ROOT / "web" / "assets" / "pixel" / "v1" / "manifests" / "assets.json"
@@ -193,13 +198,23 @@ class WebStaticTests(unittest.TestCase):
             self.assertIn("mainHand", asset["anchors"])
 
         assassin = manifest["heroes"]["male_assassin"]
+        self.assertEqual(
+            assassin["image"],
+            "/web/assets/pixel/v1/heroes/male/pixellab_shadow_assassin.png",
+        )
         assassin_path = ROOT / assassin["image"].lstrip("/")
         self.assertTrue(assassin_path.exists(), assassin_path)
         self.assertEqual(assassin_path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+        male_width, male_height, _male_pixels = read_png(assassin_path)
         self.assertEqual(assassin["frameWidth"], 128)
         self.assertEqual(assassin["frameHeight"], 128)
+        self.assertEqual(male_width, assassin["frameWidth"] * 15)
+        self.assertEqual(male_height, assassin["frameHeight"] * 11)
         self.assertGreaterEqual(assassin["drawWidth"], 108)
         self.assertIn("attack_blade", assassin["animations"])
+        self.assertEqual(assassin["animations"]["walk"]["frames"], 15)
+        self.assertEqual(assassin["animations"]["attack_blade"]["frames"], 9)
+        self.assertEqual(assassin["animations"]["attack_dual"]["frames"], 9)
 
         female_assassin = manifest["heroes"]["female_assassin"]
         self.assertEqual(
@@ -218,7 +233,7 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("attack_blade", female_assassin["animations"])
         self.assertIn("mainHand", female_assassin["anchors"])
         self.assertEqual(female_assassin["animations"]["idle"]["frames"], 5)
-        self.assertEqual(female_assassin["animations"]["walk"]["frames"], 16)
+        self.assertEqual(female_assassin["animations"]["walk"]["frames"], 12)
         self.assertEqual(female_assassin["animations"]["attack_blade"]["frames"], 9)
         self.assertEqual(female_assassin["animations"]["hurt"]["frames"], 5)
 
@@ -248,6 +263,28 @@ class WebStaticTests(unittest.TestCase):
         )
 
         self.assertGreater(alpha_difference, 2000)
+
+    def test_male_assassin_is_not_the_old_cutout_model(self) -> None:
+        old_path = ROOT / "web" / "assets" / "pixel" / "v1" / "heroes" / "male" / "assassin_sample.png"
+        new_path = ROOT / "web" / "assets" / "pixel" / "v1" / "heroes" / "male" / "pixellab_shadow_assassin.png"
+        old_width, _old_height, old_pixels = read_png(old_path)
+        new_width, _new_height, new_pixels = read_png(new_path)
+
+        old_idle = self.frame_pixels(old_pixels, old_width, 128, 128, 0, 0)
+        new_idle = self.frame_pixels(new_pixels, new_width, 128, 128, 0, 0)
+        old_alpha = [
+            old_idle[(row * 128 + col) * 4 + 3] > 0
+            for row in range(128)
+            for col in range(128)
+        ]
+        new_alpha = [
+            new_idle[(row * 128 + col) * 4 + 3] > 0
+            for row in range(128)
+            for col in range(128)
+        ]
+        alpha_difference = sum(1 for old, new in zip(old_alpha, new_alpha) if old != new)
+
+        self.assertGreater(alpha_difference, 2500)
 
     def test_female_assassin_faces_right_and_uses_action_poses(self) -> None:
         female_path = (
@@ -313,6 +350,61 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("attack_dual", script)
         self.assertIn("[[104.6, 36.3, 0.08]", script)
 
+    def test_male_assassin_uses_pixellab_walk_and_attack_skeleton_frame_anchors(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("MALE_ASSASSIN_ACTIONS", script)
+        self.assertIn("walk: { row: 1, frames: 15, frameMs: 48 }", script)
+        self.assertIn("attack_blade: { row: 3, frames: 9, frameMs: 48 }", script)
+        self.assertIn("attack_dual: { row: 4, frames: 9, frameMs: 46 }", script)
+        self.assertIn("MALE_ASSASSIN_FRAME_ANCHORS", script)
+        self.assertIn("frameAnchors: MALE_ASSASSIN_FRAME_ANCHORS", script)
+        self.assertIn("actions: MALE_ASSASSIN_ACTIONS", script)
+        self.assertIn("[[90.3,68.1,0.84]", script)
+        self.assertIn("[[84.4,71.2,1.21]", script)
+        self.assertIn("[[69.1,19.2,-2.11]", script)
+        self.assertIn("[[69.1,19.2,-2.11],[30.7,25.6,-2.45]", script)
+
+    def test_male_assassin_attack_rows_have_readable_key_poses(self) -> None:
+        male_path = ROOT / "web" / "assets" / "pixel" / "v1" / "heroes" / "male" / "pixellab_shadow_assassin.png"
+        width, _height, pixels = read_png(male_path)
+        frame_width = 128
+        frame_height = 128
+
+        blade_start = self.frame_pixels(pixels, width, frame_width, frame_height, 3, 0)
+        blade_mid = self.frame_pixels(pixels, width, frame_width, frame_height, 3, 4)
+        dual_start = self.frame_pixels(pixels, width, frame_width, frame_height, 4, 0)
+        dual_mid = self.frame_pixels(pixels, width, frame_width, frame_height, 4, 4)
+
+        self.assertGreater(self.pixel_difference(blade_start, blade_mid), 250000)
+        self.assertGreater(self.pixel_difference(dual_start, dual_mid), 250000)
+
+    def test_male_assassin_walk_keeps_pixellab_tail_frames(self) -> None:
+        male_path = ROOT / "web" / "assets" / "pixel" / "v1" / "heroes" / "male" / "pixellab_shadow_assassin.png"
+        width, _height, pixels = read_png(male_path)
+        frame_width = 128
+        frame_height = 128
+
+        tail = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 11)
+        final = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 12)
+
+        self.assertGreater(self.pixel_difference(tail, final), 25000)
+
+    def test_male_assassin_walk_has_pixellab_loop_bridge_frames(self) -> None:
+        male_path = ROOT / "web" / "assets" / "pixel" / "v1" / "heroes" / "male" / "pixellab_shadow_assassin.png"
+        width, _height, pixels = read_png(male_path)
+        frame_width = 128
+        frame_height = 128
+
+        first = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 0)
+        old_final = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 12)
+        bridge_one = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 13)
+        bridge_two = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 14)
+
+        self.assertGreater(self.pixel_difference(old_final, bridge_one), 25000)
+        self.assertGreater(self.pixel_difference(bridge_one, bridge_two), 25000)
+        self.assertLess(self.pixel_difference(bridge_two, first), self.pixel_difference(old_final, first))
+
     def test_pixel_hero_base_is_weaponless_and_supports_weapon_actions(self) -> None:
         generator = (ROOT / "tools" / "generate_pixel_assets.py").read_text(encoding="utf-8")
         manifest = json.loads(
@@ -370,11 +462,45 @@ class WebStaticTests(unittest.TestCase):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
-        self.assertIn('/web/app.js?v=assassin-v39', html)
-        self.assertIn('/web/styles.css?v=assassin-v39', html)
+        self.assertIn('/web/app.js?v=assassin-v53', html)
+        self.assertIn('/web/styles.css?v=assassin-v53', html)
         self.assertIn("PIXEL_ASSET_VERSION", script)
-        self.assertIn("assassin-v39", script)
+        self.assertIn("assassin-v53", script)
         self.assertIn("?v=${PIXEL_ASSET_VERSION}", script)
+
+    def test_stage_loading_waits_for_current_hero_sprite_before_revealing_canvas(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="stageLoading"', html)
+        self.assertIn('class="stage-loading hidden"', html)
+        self.assertIn("stageLoadToken: 0", script)
+        self.assertIn("function stageAssetKeysForSnapshot(", script)
+        self.assertIn("equipmentAssetKey(equipmentAppearance(item))", script)
+        self.assertIn("return Array.from(new Set(keys))", script)
+        self.assertIn("gender === 'female' ? 'pixelHeroFemaleAssassin' : 'pixelHeroMaleAssassin'", script)
+        self.assertIn("function waitForStageAssets(", script)
+        self.assertIn("const assetLoadPromises = {}", script)
+        self.assertIn("Promise.allSettled(", script)
+        self.assertIn("state.assetsReady = true", script)
+        self.assertIn("function updateStageLoading()", script)
+        self.assertIn("state.stageReady = Boolean(state.assetsReady && state.snapshot && state.visual.ready)", script)
+        self.assertIn("waitForStageAssets(snapshot, stageLoadToken)", script)
+        self.assertIn("if (state.stageLoadToken !== token)", script)
+        self.assertIn("canvas.setAttribute('aria-busy'", script)
+        self.assertIn(".stage-loading", styles)
+        self.assertIn("loading_rune_loop.png?v=assassin-v53", styles)
+        self.assertIn("animation: stage-loading-rune 0.86s steps(8) infinite", styles)
+        self.assertIn("@keyframes stage-loading-rune", styles)
+        self.assertIn("background-position: -768px 0", styles)
+        self.assertNotIn("backdrop-filter: blur", styles)
+
+        loading_asset = ROOT / "web" / "assets" / "pixel" / "v1" / "ui" / "loading_rune_loop.png"
+        self.assertTrue(loading_asset.exists(), loading_asset)
+        width, height, _pixels = read_png(loading_asset)
+        self.assertEqual(width, 64 * 8)
+        self.assertEqual(height, 64)
 
     def test_frontend_uses_pixel_sprite_renderer_with_fallback(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -492,6 +618,11 @@ class WebStaticTests(unittest.TestCase):
         for marker in (
             "equipmentAppearance(",
             "equipmentPreviewHtml",
+            "EQUIPMENT_MODEL_ASSET_KEYS",
+            "equipmentAssetPath(appearance)",
+            "equipmentSpriteImage(appearance)",
+            "drawEquipmentSprite(appearance",
+            "drawWingEquipmentSprite",
             "drawEquippedWings",
             "drawEquippedHalo",
             "drawEquippedFootCircle",
@@ -502,9 +633,60 @@ class WebStaticTests(unittest.TestCase):
             self.assertIn(marker, script)
 
         self.assertIn("equipmentPreviewHtml(item)", script)
+        self.assertIn("const wingFlap = Math.sin", script)
+        self.assertIn("haloAnchorFromSkeleton(skeleton)", script)
+        self.assertIn("const verticalGap = skeleton.frameBased ? 72 : 42", script)
+        self.assertIn("drawHaloBurst(anchor, palette, haloSpin", script)
+        self.assertIn("drawFootAuraOrbit(anchor, palette, auraSpin", script)
+        self.assertIn("const petHop = Math.sin", script)
+        self.assertIn("scaleX: 1 + petSquash", script)
+        self.assertIn("gear-has-image", script)
         self.assertIn("gear-preview", styles)
+        self.assertIn("--gear-image", styles)
         self.assertIn("gear-core", styles)
         self.assertIn("gear-edge", styles)
+        self.assertIn("display: none", styles)
+
+    def test_pixellab_equipment_model_assets_exist_and_are_wired(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        manifest = json.loads(
+            (ROOT / "web" / "assets" / "pixel" / "v1" / "manifests" / "assets.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        expected = {
+            "wooden_blade": (96, 96),
+            "blade": (96, 96),
+            "axe": (96, 96),
+            "spear": (96, 96),
+            "visor_helm": (96, 96),
+            "crown_helm": (96, 96),
+            "leather_mail": (160, 96),
+            "plate_mail": (160, 96),
+            "travel_boots": (128, 96),
+            "winged_boots": (128, 96),
+            "sprout_pet": (64, 64),
+            "leaf_pet": (64, 64),
+            "moon_cat_pet": (64, 64),
+            "star_bunny_pet": (64, 64),
+            "spark_fox_pet": (64, 64),
+            "ember_fox_pet": (64, 64),
+        }
+
+        self.assertEqual(set(manifest["equipment"]), set(expected))
+        for model, (expected_width, expected_height) in expected.items():
+            asset = manifest["equipment"][model]
+            self.assertEqual(asset["width"], expected_width)
+            self.assertEqual(asset["height"], expected_height)
+            path = ROOT / asset["image"].lstrip("/")
+            self.assertTrue(path.exists(), path)
+            width, height, pixels = read_png(path)
+            self.assertEqual(width, expected_width)
+            self.assertEqual(height, expected_height)
+            visible_pixels = sum(1 for index in range(3, len(pixels), 4) if pixels[index] > 0)
+            self.assertGreater(visible_pixels, 20, model)
+            self.assertIn(f"/web/assets/pixel/v1/equipment/{model}.png", script)
+            self.assertIn(model, script)
 
     def test_premium_equipment_overlays_are_spiritual_shapes_not_body_armor(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -533,12 +715,12 @@ class WebStaticTests(unittest.TestCase):
         )
         anchors = manifest["heroes"]["male_assassin"]["anchors"]
 
-        self.assertEqual(anchors["mainHand"], [106, 58])
-        self.assertEqual(anchors["offHand"], [84, 62])
-        self.assertEqual(anchors["ringHand"], [43, 70])
-        self.assertEqual(anchors["halo"], [66, 7])
-        self.assertEqual(anchors["back"], [58, 34])
-        self.assertEqual(anchors["feetCenter"], [64, 126])
+        self.assertEqual(anchors["mainHand"], [90, 68])
+        self.assertEqual(anchors["offHand"], [28, 73])
+        self.assertEqual(anchors["ringHand"], [28, 73])
+        self.assertEqual(anchors["halo"], [73, 0])
+        self.assertEqual(anchors["back"], [34, 40])
+        self.assertEqual(anchors["feetCenter"], [57, 125])
         self.assertIn("const ASSASSIN_EQUIPMENT_ANCHORS", script)
         self.assertIn("offHandDrift", script)
         self.assertIn("attackProgress", script)
@@ -674,7 +856,9 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("WALK_PIXELS_PER_FRAME", script)
         self.assertIn("WALK_PIXELS_PER_FRAME = 4", script)
         self.assertIn("WALK_FRAME_SEQUENCE", script)
-        self.assertIn("[0, 1, 2, 3, 4, 5, 6, 7, 8, 9", script)
+        self.assertIn("WALK_FRAME_SEQUENCE = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]", script)
+        self.assertIn("walk: { row: 1, frames: 12, frameMs: 44 }", script)
+        self.assertNotIn("WALK_FRAME_SEQUENCE = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12", script)
         self.assertNotIn("[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]", script)
         self.assertIn("function walkFrameSequence(", script)
         self.assertIn("visualWalkDistance", script)
@@ -761,9 +945,9 @@ class WebStaticTests(unittest.TestCase):
         frame_width = 128
         frame_height = 128
         first = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 0)
-        last = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 15)
+        last = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 11)
 
-        self.assertLess(self.pixel_difference(first, last), 850000)
+        self.assertLess(self.pixel_difference(first, last), 450000)
 
     def test_female_assassin_walk_loop_starts_on_stride_pose(self) -> None:
         female_path = (
@@ -774,11 +958,11 @@ class WebStaticTests(unittest.TestCase):
         frame_height = 128
         idle_legs = self.frame_region_pixels(pixels, width, frame_width, frame_height, 0, 0, 64, 128)
         first_legs = self.frame_region_pixels(pixels, width, frame_width, frame_height, 1, 0, 64, 128)
-        penultimate = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 14)
-        closing = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 15)
+        penultimate = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 10)
+        closing = self.frame_pixels(pixels, width, frame_width, frame_height, 1, 11)
 
         self.assertGreater(self.pixel_difference(first_legs, idle_legs), 250000)
-        self.assertLess(self.pixel_difference(penultimate, closing), 850000)
+        self.assertLess(self.pixel_difference(penultimate, closing), 650000)
 
     def test_monster_visual_spawn_buffer_keeps_monsters_offscreen(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")

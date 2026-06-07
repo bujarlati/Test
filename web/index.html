@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Idle Forest</title>
-    <link rel="stylesheet" href="/web/styles.css?v=assassin-v39" />
+    <link rel="stylesheet" href="/web/styles.css?v=assassin-v53" />
   </head>
   <body>
     <section id="profileGate" class="profile-gate">
@@ -106,6 +106,13 @@
 
       <section class="stage">
         <canvas id="gameCanvas" width="960" height="520"></canvas>
+        <div id="stageLoading" class="stage-loading hidden" aria-live="polite">
+          <div class="stage-loading-panel">
+            <div class="stage-loading-mark" aria-hidden="true"></div>
+            <strong>加载角色资源</strong>
+            <span id="stageLoadingText">正在准备像素动画</span>
+          </div>
+        </div>
         <div id="reviveText" class="revive-banner hidden"></div>
         <div class="stage-hud">
           <div>
@@ -237,6 +244,6 @@
       </div>
     </section>
 
-    <script src="/web/app.js?v=assassin-v39"></script>
+    <script src="/web/app.js?v=assassin-v53"></script>
   </body>
 </html>

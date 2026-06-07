@@ -3,7 +3,7 @@
   "tileSize": 32,
   "heroes": {
     "male_assassin": {
-      "image": "/web/assets/pixel/v1/heroes/male/assassin_sample.png",
+      "image": "/web/assets/pixel/v1/heroes/male/pixellab_shadow_assassin.png",
       "frameWidth": 128,
       "frameHeight": 128,
       "drawWidth": 116,
@@ -14,36 +14,36 @@
           121
         ],
         "mainHand": [
-          106,
-          58
+          90,
+          68
         ],
         "offHand": [
-          84,
-          62
+          28,
+          73
         ],
         "ringHand": [
-          43,
-          70
+          28,
+          73
         ],
         "head": [
-          64,
-          35
+          73,
+          28
         ],
         "torso": [
-          63,
-          71
+          59,
+          58
         ],
         "halo": [
-          66,
-          7
+          73,
+          0
         ],
         "back": [
-          58,
-          34
+          34,
+          40
         ],
         "feetCenter": [
-          64,
-          126
+          57,
+          125
         ]
       },
       "animations": {
@@ -54,8 +54,8 @@
         },
         "walk": {
           "row": 1,
-          "frames": 8,
-          "frameMs": 82
+          "frames": 15,
+          "frameMs": 48
         },
         "attack_unarmed": {
           "row": 2,
@@ -64,13 +64,13 @@
         },
         "attack_blade": {
           "row": 3,
-          "frames": 8,
-          "frameMs": 64
+          "frames": 9,
+          "frameMs": 48
         },
         "attack_dual": {
           "row": 4,
-          "frames": 8,
-          "frameMs": 60
+          "frames": 9,
+          "frameMs": 46
         },
         "attack_bow": {
           "row": 5,
@@ -156,7 +156,7 @@
         },
         "walk": {
           "row": 1,
-          "frames": 16,
+          "frames": 12,
           "frameMs": 44
         },
         "attack_unarmed": {
@@ -379,7 +379,88 @@
       }
     }
   },
-  "equipment": {},
+  "equipment": {
+    "wooden_blade": {
+      "image": "/web/assets/pixel/v1/equipment/wooden_blade.png",
+      "width": 96,
+      "height": 96
+    },
+    "blade": {
+      "image": "/web/assets/pixel/v1/equipment/blade.png",
+      "width": 96,
+      "height": 96
+    },
+    "axe": {
+      "image": "/web/assets/pixel/v1/equipment/axe.png",
+      "width": 96,
+      "height": 96
+    },
+    "spear": {
+      "image": "/web/assets/pixel/v1/equipment/spear.png",
+      "width": 96,
+      "height": 96
+    },
+    "visor_helm": {
+      "image": "/web/assets/pixel/v1/equipment/visor_helm.png",
+      "width": 96,
+      "height": 96
+    },
+    "crown_helm": {
+      "image": "/web/assets/pixel/v1/equipment/crown_helm.png",
+      "width": 96,
+      "height": 96
+    },
+    "leather_mail": {
+      "image": "/web/assets/pixel/v1/equipment/leather_mail.png",
+      "width": 160,
+      "height": 96
+    },
+    "plate_mail": {
+      "image": "/web/assets/pixel/v1/equipment/plate_mail.png",
+      "width": 160,
+      "height": 96
+    },
+    "travel_boots": {
+      "image": "/web/assets/pixel/v1/equipment/travel_boots.png",
+      "width": 128,
+      "height": 96
+    },
+    "winged_boots": {
+      "image": "/web/assets/pixel/v1/equipment/winged_boots.png",
+      "width": 128,
+      "height": 96
+    },
+    "sprout_pet": {
+      "image": "/web/assets/pixel/v1/equipment/sprout_pet.png",
+      "width": 64,
+      "height": 64
+    },
+    "leaf_pet": {
+      "image": "/web/assets/pixel/v1/equipment/leaf_pet.png",
+      "width": 64,
+      "height": 64
+    },
+    "moon_cat_pet": {
+      "image": "/web/assets/pixel/v1/equipment/moon_cat_pet.png",
+      "width": 64,
+      "height": 64
+    },
+    "star_bunny_pet": {
+      "image": "/web/assets/pixel/v1/equipment/star_bunny_pet.png",
+      "width": 64,
+      "height": 64
+    },
+    "spark_fox_pet": {
+      "image": "/web/assets/pixel/v1/equipment/spark_fox_pet.png",
+      "width": 64,
+      "height": 64
+    },
+    "ember_fox_pet": {
+      "image": "/web/assets/pixel/v1/equipment/ember_fox_pet.png",
+      "width": 64,
+      "height": 64
+    }
+  },
   "monsters": {
     "slime": {
       "image": "/web/assets/pixel/v1/monsters/common/slime.png",

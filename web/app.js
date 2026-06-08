@@ -68,7 +68,7 @@ const MONSTER_SPAWN_SCREEN_BUFFER = 820
 const COMBAT_VISUAL_RANGE_GRACE = 16
 const LOOT_FLOAT_DURATION_MS = 2400
 const ATTACK_EFFECT_DURATION_MS = 520
-const PIXEL_ASSET_VERSION = 'assassin-v56'
+const PIXEL_ASSET_VERSION = 'assassin-v57'
 const DEFAULT_SETTINGS = {
   paused: false,
   volume: 0.7,
@@ -4231,7 +4231,7 @@ function drawEquippedWings(skeleton, armor) {
   const rareScale = armor.rarity === 'red' ? 1.24 : armor.rarity === 'gold' ? 1.14 : armor.rarity === 'purple' ? 1.08 : 1
   const spread = 52 * rareScale + pulse * 6
   const lift = 58 * rareScale
-  drawEquipmentGlow(anchor, appearance, 68 * rareScale, 76 * rareScale)
+  drawWingEdgeGlow(anchor, palette, armor.rarity, spread, lift)
   const wingWidth = 188 * rareScale
   const wingHeight = 126 * rareScale
   if (drawWingEquipmentSprite(appearance, anchor, wingWidth, wingHeight, rareScale, 0.82 + pulse * 0.1)) {
@@ -4478,6 +4478,47 @@ function drawWingSparks(anchor, palette, rarity, spread) {
     ctx.fill()
   }
   ctx.globalAlpha = 1
+}
+
+function drawWingEdgeGlow(anchor, palette, rarity, spread, lift) {
+  if (!['purple', 'gold', 'red', 'rainbow'].includes(rarity)) {
+    return
+  }
+  const now = state.lastRenderAt || 0
+  const pulse = 0.45 + animationPhase(620) * 0.55
+  const colors = rarity === 'rainbow'
+    ? ['#8effff', '#ff78e6', '#fff36a']
+    : [palette.glow || '#ff4d4f', '#ffca55', palette.primary || '#ff7a7c']
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  ;[-1, 1].forEach((side) => {
+    for (let lane = 0; lane < 3; lane += 1) {
+      const offset = lane * 7
+      ctx.globalAlpha = 0.1 + pulse * 0.12
+      ctx.strokeStyle = colors[lane % colors.length]
+      ctx.lineWidth = 1.4 + lane * 0.35
+      ctx.beginPath()
+      ctx.moveTo(anchor.x + side * (12 + offset), anchor.y - 4 - lane * 2)
+      ctx.bezierCurveTo(
+        anchor.x + side * (spread * 0.35 + offset),
+        anchor.y - lift * (0.46 + lane * 0.06),
+        anchor.x + side * (spread * 0.82 + offset),
+        anchor.y - lift * (0.5 - lane * 0.03),
+        anchor.x + side * (spread + 8 + offset * 0.5),
+        anchor.y - 6 + lane * 7
+      )
+      ctx.stroke()
+    }
+    const tipPulse = 0.4 + Math.sin(now / 180 + side) * 0.22 + pulse * 0.38
+    const tipX = anchor.x + side * (spread + 10)
+    const tipY = anchor.y - 4
+    ctx.globalAlpha = 0.18 + tipPulse * 0.22
+    ctx.fillStyle = colors[0]
+    ctx.beginPath()
+    ctx.arc(tipX, tipY, 5 + tipPulse * 5, 0, Math.PI * 2)
+    ctx.fill()
+  })
+  ctx.restore()
 }
 
 function drawWingGemParticles(anchor, palette, rarity, spread, wingWidth, wingHeight) {

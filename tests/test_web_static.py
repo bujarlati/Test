@@ -490,10 +490,10 @@ class WebStaticTests(unittest.TestCase):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
-        self.assertIn('/web/app.js?v=assassin-v56', html)
-        self.assertIn('/web/styles.css?v=assassin-v56', html)
+        self.assertIn('/web/app.js?v=assassin-v57', html)
+        self.assertIn('/web/styles.css?v=assassin-v57', html)
         self.assertIn("PIXEL_ASSET_VERSION", script)
-        self.assertIn("assassin-v56", script)
+        self.assertIn("assassin-v57", script)
         self.assertIn("?v=${PIXEL_ASSET_VERSION}", script)
 
     def test_stage_loading_waits_for_current_hero_sprite_before_revealing_canvas(self) -> None:
@@ -758,7 +758,7 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("skeleton.ringHand || skeleton.offHand", script)
         self.assertIn("ring: ringPetAnchor(skeleton.ringHand || skeleton.offHand)", script)
         self.assertIn("radiusX = boots.rarity === 'red' ? 34", script)
-        self.assertIn("drawEquipmentGlow(anchor, appearance, 68 * rareScale, 76 * rareScale)", script)
+        self.assertIn("drawWingEdgeGlow(anchor, palette, armor.rarity, spread, lift)", script)
 
     def test_ring_slot_is_presented_as_following_pet(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -864,12 +864,16 @@ class WebStaticTests(unittest.TestCase):
 
     def test_wing_effects_use_gem_particles_instead_of_body_ring(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        wing_body = script.split("function drawEquippedWings(", 1)[1].split("function drawEquippedHalo(", 1)[0]
 
+        self.assertIn("function drawWingEdgeGlow(", script)
         self.assertIn("function drawWingGemParticles(", script)
         self.assertIn("function drawGemParticle(", script)
+        self.assertIn("drawWingEdgeGlow(anchor, palette, armor.rarity, spread, lift)", wing_body)
         self.assertIn("drawWingGemParticles(anchor, palette, armor.rarity, spread, wingWidth, wingHeight)", script)
         self.assertIn("rarity === 'rainbow' ? 30 : rarity === 'red' ? 22", script)
         self.assertIn("if (slot === 'armor')", script)
+        self.assertNotIn("drawEquipmentGlow(", wing_body)
         self.assertNotIn("armor: 1.02", script)
         self.assertNotIn("armor: { x: -6, y: -12 }", script)
 

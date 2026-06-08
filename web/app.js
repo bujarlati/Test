@@ -68,7 +68,7 @@ const MONSTER_SPAWN_SCREEN_BUFFER = 820
 const COMBAT_VISUAL_RANGE_GRACE = 16
 const LOOT_FLOAT_DURATION_MS = 2400
 const ATTACK_EFFECT_DURATION_MS = 520
-const PIXEL_ASSET_VERSION = 'assassin-v55'
+const PIXEL_ASSET_VERSION = 'assassin-v56'
 const DEFAULT_SETTINGS = {
   paused: false,
   volume: 0.7,
@@ -4237,6 +4237,7 @@ function drawEquippedWings(skeleton, armor) {
   if (drawWingEquipmentSprite(appearance, anchor, wingWidth, wingHeight, rareScale, 0.82 + pulse * 0.1)) {
     if (['purple', 'gold', 'red', 'rainbow'].includes(armor.rarity)) {
       drawWingSparks(anchor, palette, armor.rarity, spread)
+      drawWingGemParticles(anchor, palette, armor.rarity, spread, wingWidth, wingHeight)
     }
     return
   }
@@ -4283,6 +4284,7 @@ function drawEquippedWings(skeleton, armor) {
   })
   if (['purple', 'gold', 'red', 'rainbow'].includes(armor.rarity)) {
     drawWingSparks(anchor, palette, armor.rarity, spread)
+    drawWingGemParticles(anchor, palette, armor.rarity, spread, wingWidth, wingHeight)
   }
   ctx.restore()
 }
@@ -4462,7 +4464,7 @@ function drawFootAuraOrbit(anchor, palette, spin, auraWidth, auraHeight, rarity)
 }
 
 function drawWingSparks(anchor, palette, rarity, spread) {
-  const count = rarity === 'red' ? 9 : rarity === 'gold' ? 7 : 5
+  const count = rarity === 'rainbow' ? 14 : rarity === 'red' ? 11 : rarity === 'gold' ? 7 : 5
   const now = state.lastRenderAt || 0
   for (let i = 0; i < count; i += 1) {
     const side = i % 2 === 0 ? -1 : 1
@@ -4476,6 +4478,62 @@ function drawWingSparks(anchor, palette, rarity, spread) {
     ctx.fill()
   }
   ctx.globalAlpha = 1
+}
+
+function drawWingGemParticles(anchor, palette, rarity, spread, wingWidth, wingHeight) {
+  const count = rarity === 'rainbow' ? 30 : rarity === 'red' ? 22 : 0
+  if (!count) {
+    return
+  }
+  const now = state.lastRenderAt || 0
+  const colors = rarity === 'rainbow'
+    ? ['#8effff', '#ff78e6', '#fff36a', '#68b7ff', '#ff7a7c']
+    : [palette.glow || '#ff4d4f', '#ffca55', palette.primary || '#ff7a7c', '#fff36a']
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  for (let i = 0; i < count; i += 1) {
+    const side = i % 2 === 0 ? -1 : 1
+    const lane = Math.floor(i / 2)
+    const t = ((lane % 15) + 0.5) / 15
+    const drift = (now / (900 + i * 23) + i * 0.37) % 1
+    const shimmer = Math.sin(now / (140 + i * 5) + i) * 0.5 + 0.5
+    const arcX = side * (16 + spread * (0.24 + t * 0.96))
+    const arcY = -12 - Math.sin(t * Math.PI) * wingHeight * 0.34 + Math.cos(t * Math.PI * 1.4) * 12
+    const x = anchor.x + arcX + Math.cos(drift * Math.PI * 2) * 7
+    const y = anchor.y + arcY + Math.sin((drift + t) * Math.PI * 2) * 5
+    const color = colors[i % colors.length]
+    const size = (rarity === 'rainbow' ? 2.8 : 2.4) + shimmer * 2.1
+    ctx.globalAlpha = 0.16 + shimmer * (rarity === 'rainbow' ? 0.46 : 0.34)
+    ctx.strokeStyle = color
+    ctx.lineWidth = 1.2 + shimmer * 0.8
+    ctx.beginPath()
+    ctx.moveTo(x - side * (5 + shimmer * 8), y + 3 + shimmer * 2)
+    ctx.lineTo(x + side * (4 + shimmer * 6), y - 4 - shimmer * 2)
+    ctx.stroke()
+    drawGemParticle(x, y, size, color, 0.48 + shimmer * 0.34)
+  }
+  ctx.restore()
+}
+
+function drawGemParticle(x, y, size, color, alpha) {
+  ctx.save()
+  ctx.globalAlpha = alpha
+  ctx.fillStyle = color
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(x, y - size)
+  ctx.lineTo(x + size * 0.82, y)
+  ctx.lineTo(x, y + size)
+  ctx.lineTo(x - size * 0.82, y)
+  ctx.closePath()
+  ctx.fill()
+  ctx.stroke()
+  ctx.globalAlpha = alpha * 0.34
+  ctx.beginPath()
+  ctx.arc(x, y, size * 2.2, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
 }
 
 function drawRingPet(skeleton, ring) {
@@ -4622,6 +4680,9 @@ function drawEquipmentGlow(anchor, appearance, width, height) {
 
 function drawPixellabEquipmentEffect(anchor, item, slot) {
   const image = assetImage('equipmentEnchantEffect')
+  if (slot === 'armor') {
+    return false
+  }
   if (!image || !anchor || !item || !['purple', 'gold', 'red', 'rainbow'].includes(item.rarity)) {
     return false
   }
@@ -4634,7 +4695,6 @@ function drawPixellabEquipmentEffect(anchor, item, slot) {
   const slotScale = {
     weapon: 0.7,
     helmet: 0.76,
-    armor: 1.02,
     boots: 0.9,
     ring: 0.66
   }[slot] || 0.72
@@ -4644,7 +4704,6 @@ function drawPixellabEquipmentEffect(anchor, item, slot) {
   const offsets = {
     weapon: { x: 7, y: -3 },
     helmet: { x: 0, y: -4 },
-    armor: { x: -6, y: -12 },
     boots: { x: 0, y: 8 },
     ring: { x: 0, y: -3 }
   }[slot] || { x: 0, y: 0 }

@@ -129,7 +129,7 @@ class GameEngineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             engine.donate_for_talent()
 
-    def test_donation_expansion_costs_five_donations_and_adds_talent(self) -> None:
+    def test_donation_expansion_costs_five_donations_and_adds_common_talent(self) -> None:
         engine = GameEngine(seed=205)
         engine.hero.donations = 5
         engine.hero.talents = TALENT_CATALOG[TalentTier.MYTHIC][:3]
@@ -140,6 +140,8 @@ class GameEngineTests(unittest.TestCase):
         self.assertEqual(engine.hero.donations, 0)
         self.assertEqual(len(engine.hero.talents), 4)
         self.assertEqual(result["talent"]["id"], engine.hero.talents[-1].id)
+        self.assertEqual(result["talent"]["tier"], "common")
+        self.assertEqual(engine.hero.talents[-1].tier, TalentTier.COMMON)
 
     def test_ring_equipment_appearance_is_a_pet_companion(self) -> None:
         item = Equipment(

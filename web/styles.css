@@ -841,6 +841,43 @@ h2 {
   color: #fff36a;
 }
 
+.shop-token-donation {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(255, 202, 85, 0.55);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 202, 85, 0.22), transparent 58%),
+    rgba(245, 236, 214, 0.08);
+  box-shadow: 0 0 16px rgba(255, 202, 85, 0.24);
+}
+
+.shop-token-donation::before,
+.shop-token-donation::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(255, 243, 106, 0.38);
+  transform: rotate(45deg);
+}
+
+.shop-token-donation::after {
+  inset: 13px;
+  border-color: rgba(255, 120, 230, 0.5);
+  transform: rotate(0deg);
+}
+
+.shop-token-core {
+  position: relative;
+  z-index: 1;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff36a;
+  box-shadow:
+    0 0 10px rgba(255, 243, 106, 0.8),
+    0 0 18px rgba(255, 120, 230, 0.45);
+}
+
 .item-main {
   justify-content: space-between;
   gap: 10px;

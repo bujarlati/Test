@@ -425,9 +425,9 @@ class GameEngine:
             raise ValueError("all current talents must be mythic")
 
         owned_ids = {talent.id for talent in self.hero.talents}
-        candidates = [talent for talent in TALENT_CATALOG[TalentTier.MYTHIC] if talent.id not in owned_ids]
+        candidates = [talent for talent in TALENT_CATALOG[TalentTier.COMMON] if talent.id not in owned_ids]
         if not candidates:
-            candidates = list(TALENT_CATALOG[TalentTier.MYTHIC])
+            candidates = list(TALENT_CATALOG[TalentTier.COMMON])
         talent = self.rng.choice(candidates)
         self.hero.donations -= 5
         self.hero.talents.append(talent)

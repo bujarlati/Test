@@ -1761,6 +1761,45 @@ function marketSignature(listings, heroId) {
     .join('|')
 }
 
+function systemShopPreviewHtml(entry) {
+  if (entry.kind === 'donation') {
+    return `
+      <span class="shop-token shop-token-donation rarity-gold" aria-hidden="true">
+        <span class="shop-token-core"></span>
+      </span>
+    `
+  }
+  return equipmentPreviewHtml(systemShopPreviewItem(entry))
+}
+
+function systemShopPreviewItem(entry) {
+  const slot = entry.slot || 'weapon'
+  const rarity = entry.rarity || 'rainbow'
+  const model = {
+    weapon: 'blade',
+    helmet: 'crown_helm',
+    armor: 'plate_mail',
+    boots: 'winged_boots',
+    ring: 'ember_fox_pet'
+  }[slot] || slot
+  return {
+    id: `shop_preview_${entry.sku}`,
+    name: entry.name || entry.sku,
+    slot,
+    rarity,
+    level: entry.level || 1,
+    weapon_type: slot === 'weapon' ? 'blade' : null,
+    appearance: {
+      slot,
+      model,
+      palette: FALLBACK_GEAR_PALETTES[rarity] || FALLBACK_GEAR_PALETTES.rainbow,
+      accent: rarity,
+      aura: true,
+      icon_shape: slot === 'ring' ? 'pet' : 'slash'
+    }
+  }
+}
+
 function renderSystemShop(items, heroGold, force = true) {
   if (!els.systemShopList) {
     return
@@ -1779,14 +1818,13 @@ function renderSystemShop(items, heroGold, force = true) {
       const pending = state.systemShopActionInFlightSkus.has(entry.sku)
       const affordable = entry.affordable !== false && Number(heroGold || 0) >= Number(entry.price || 0)
       const rarity = entry.rarity || (entry.kind === 'donation' ? 'gold' : 'white')
-      const token = entry.kind === 'donation' ? 'D' : slotLabel(entry.slot || '')
       const subLine = entry.kind === 'donation'
         ? t('buyDonation')
         : `${slotLabel(entry.slot)} · ${rarityLabel(entry.rarity)} · Lv.${entry.level || 1}`
       return `
         <article class="item shop-item rarity-${rarity}">
           <div class="item-visual">
-            <div class="shop-token rarity-${rarity}">${escapeHtml(token)}</div>
+            ${systemShopPreviewHtml(entry)}
             <div class="item-copy">
               <div class="item-main">
                 <span class="item-name">${escapeHtml(entry.name || entry.sku)}</span>
@@ -3735,80 +3773,82 @@ function drawReviveAura(skeleton, entity) {
 }
 
 function drawTalentAura(skeleton, entity) {
-  const style = talentAuraStyle(entity)
-  if (!style) {
+  const styles = talentAuraStyles(entity)
+  if (!styles.length) {
     return
   }
-  drawPixellabTalentAura(skeleton, style)
-  if (style.kind === 'lightning') {
-    drawLightningAura(skeleton, style)
-    return
-  }
-  if (style.kind === 'ward') {
-    drawWardAura(skeleton, style)
-    return
-  }
-  drawMoteAura(skeleton, style)
+  styles.forEach((style, layer) => {
+    drawPixellabTalentAura(skeleton, { ...style, layer })
+    if (style.kind === 'lightning') {
+      drawLightningAura(skeleton, style)
+      return
+    }
+    if (style.kind === 'ward') {
+      drawWardAura(skeleton, style)
+      return
+    }
+    drawMoteAura(skeleton, style)
+  })
 }
 
 function talentAuraStyle(entity) {
+  return talentAuraStyles(entity)[0] || null
+}
+
+function talentAuraStyles(entity) {
   const effects = entity.talent_effects || {}
   const names = (entity.talents || []).map((talent) => talent.name || '').join('')
-  if (effects.all_stats_pct || names.includes('龙')) {
-    return {
-      kind: 'dragon',
-      assetKey: 'talentDragonEffect',
-      color: '#ffca55',
-      secondary: '#ff78e6',
-      strength: Math.min(1.42, 0.78 + Number(effects.all_stats_pct || 0) * 4.2)
+  const tiers = (entity.talents || []).map((talent) => talent.tier)
+  const styles = []
+  const addStyle = (style) => {
+    if (!styles.some((existing) => existing.kind === style.kind)) {
+      styles.push(style)
     }
   }
-  if (effects.attack_pct || names.includes('火')) {
-    return {
-      kind: 'flame',
-      assetKey: 'talentFlameEffect',
-      color: '#ff7a7c',
-      secondary: '#ffca55',
-      strength: Math.min(1.36, 0.74 + Number(effects.attack_pct || 0) * 3.2)
-    }
+
+  Object.keys(effects).forEach((key) => addStyle(talentStyleForEffect(key, effects[key])))
+  if (names.includes('雷') || names.includes('疾风')) {
+    addStyle(talentStyleForEffect('move_speed_pct', effects.move_speed_pct || 0.08))
   }
-  if (effects.move_speed_pct || names.includes('雷') || names.includes('疾风')) {
+  if (names.includes('火')) {
+    addStyle(talentStyleForEffect('attack_pct', effects.attack_pct || 0.08))
+  }
+  if (names.includes('龙') || tiers.includes('mythic')) {
+    addStyle(talentStyleForEffect('all_stats_pct', effects.all_stats_pct || 0.05))
+  }
+  if (!styles.length && (entity.talents || []).length) {
+    addStyle(talentStyleForEffect('gold_pct', 0.05))
+  }
+  return styles.slice(0, 3)
+}
+
+function talentStyleForEffect(key, value = 0) {
+  const amount = Number(value || 0)
+  if (key === 'move_speed_pct') {
     return {
       kind: 'lightning',
       assetKey: 'talentLightningEffect',
       color: '#68b7ff',
       secondary: '#ffca55',
-      strength: Math.min(1.4, 0.72 + Number(effects.move_speed_pct || 0) * 3)
+      strength: Math.min(1.5, 0.86 + amount * 3.4)
     }
   }
-  if (effects.defense_pct || effects.max_hp_pct) {
+  if (['attack_pct', 'defense_pct', 'max_hp_pct'].includes(key)) {
     return {
-      kind: 'ward',
+      kind: 'flame',
       assetKey: 'talentFlameEffect',
-      color: '#5fd18b',
-      secondary: '#68b7ff',
-      strength: Math.min(1.25, 0.66 + Number((effects.defense_pct || 0) + (effects.max_hp_pct || 0)) * 2)
-    }
-  }
-  if (effects.attack_pct || effects.all_stats_pct) {
-    return {
-      kind: 'mote',
-      assetKey: 'talentDragonEffect',
       color: '#ff7a7c',
       secondary: '#ffca55',
-      strength: Math.min(1.25, 0.7 + Number((effects.attack_pct || 0) + (effects.all_stats_pct || 0)) * 2.5)
+      strength: Math.min(1.48, 0.88 + amount * 3.2)
     }
   }
-  if (effects.drop_rate_pct || effects.gold_pct || effects.exp_pct || effects.rift_drop_rate_pct) {
-    return {
-      kind: 'mote',
-      assetKey: 'talentDragonEffect',
-      color: '#ffca55',
-      secondary: '#b779ff',
-      strength: 0.78
-    }
+  return {
+    kind: 'dragon',
+    assetKey: 'talentDragonEffect',
+    color: '#ffca55',
+    secondary: '#ff78e6',
+    strength: Math.min(1.52, 0.9 + amount * 4.2)
   }
-  return null
 }
 
 function drawPixellabTalentAura(skeleton, style) {
@@ -3818,15 +3858,15 @@ function drawPixellabTalentAura(skeleton, style) {
   }
   const now = state.lastRenderAt || 0
   const pulse = 0.5 + animationPhase(style.kind === 'lightning' ? 460 : 720) * 0.5
-  const size = (style.kind === 'dragon' ? 122 : 108) * style.strength * (0.96 + pulse * 0.08)
-  const yOffset = style.kind === 'dragon' ? 2 : 4
+  const size = (style.kind === 'dragon' ? 138 : 124) * style.strength * (0.96 + pulse * 0.1)
+  const yOffset = (style.kind === 'dragon' ? 2 : 4) + Number(style.layer || 0) * 2
   const spin = style.kind === 'lightning'
     ? Math.sin(now / 220) * 0.16
     : (now / (style.kind === 'flame' ? 1700 : 2300)) * (style.kind === 'dragon' ? -1 : 1)
   ctx.save()
   ctx.translate(skeleton.torso.x, skeleton.torso.y + yOffset)
   ctx.rotate(spin)
-  ctx.globalAlpha = style.kind === 'dragon' ? 0.58 : 0.48
+  ctx.globalAlpha = style.kind === 'dragon' ? 0.82 : 0.72
   ctx.drawImage(image, -size / 2, -size / 2, size, size)
   ctx.restore()
   return true

@@ -76,6 +76,8 @@ class WebStaticTests(unittest.TestCase):
 
         for marker in (
             "renderSystemShop",
+            "systemShopPreviewHtml",
+            "systemShopPreviewItem",
             "/system-shop/buy",
             "/inventory/recycle",
             "/inventory/recycle-all",
@@ -801,6 +803,8 @@ class WebStaticTests(unittest.TestCase):
             "talentFlameEffect",
             "talentDragonEffect",
             "drawPixellabTalentAura",
+            "talentAuraStyles",
+            "talentStyleForEffect",
         ):
             self.assertIn(marker, script)
 

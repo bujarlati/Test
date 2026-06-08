@@ -68,7 +68,7 @@ const MONSTER_SPAWN_SCREEN_BUFFER = 820
 const COMBAT_VISUAL_RANGE_GRACE = 16
 const LOOT_FLOAT_DURATION_MS = 2400
 const ATTACK_EFFECT_DURATION_MS = 520
-const PIXEL_ASSET_VERSION = 'assassin-v57'
+const PIXEL_ASSET_VERSION = 'assassin-v58'
 const DEFAULT_SETTINGS = {
   paused: false,
   volume: 0.7,
@@ -419,6 +419,8 @@ const ASSET_PATHS = {
   pixelThorn: `/web/assets/pixel/v1/monsters/common/thorn.png?v=${PIXEL_ASSET_VERSION}`,
   pixelImp: `/web/assets/pixel/v1/monsters/common/imp.png?v=${PIXEL_ASSET_VERSION}`,
   pixelForestBoss: `/web/assets/pixel/v1/monsters/bosses/forest_boss.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelBackgroundForest: `/web/assets/pixel/v1/maps/background_forest.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelBackgroundDeepForest: `/web/assets/pixel/v1/maps/background_deep_forest.png?v=${PIXEL_ASSET_VERSION}`,
   equipmentWoodenBlade: `/web/assets/pixel/v1/equipment/wooden_blade.png?v=${PIXEL_ASSET_VERSION}`,
   equipmentBlade: `/web/assets/pixel/v1/equipment/blade.png?v=${PIXEL_ASSET_VERSION}`,
   equipmentAxe: `/web/assets/pixel/v1/equipment/axe.png?v=${PIXEL_ASSET_VERSION}`,
@@ -1768,6 +1770,7 @@ function itemSignature(item) {
     max_hp: item.max_hp,
     attack_speed: item.attack_speed,
     hp_regen: item.hp_regen,
+    move_speed: item.move_speed,
     attack_range: item.attack_range,
     weapon_type: item.weapon_type,
     owner_id: item.owner_id,
@@ -2239,6 +2242,7 @@ function itemStatLine(item) {
   ]
   if (item.attack_speed) parts.push(`${t('attackSpeed')} ${Number(item.attack_speed).toFixed(2)}`)
   if (item.hp_regen) parts.push(`${t('hpRegen')} ${Number(item.hp_regen).toFixed(1)}`)
+  if (item.move_speed) parts.push(`${t('moveSpeed')} +${Math.round(Number(item.move_speed) * 100)}%`)
   if (item.attack_range) parts.push(`${currentLanguage() === 'zh-CN' ? '距离' : 'Range'} +${Number(item.attack_range).toFixed(0)}`)
   return parts.join(' · ')
 }
@@ -2976,6 +2980,10 @@ function drawCombatRange(entities, cameraX, groundY, worldScale) {
 }
 
 function drawAssetBackground(biome, width, height) {
+  if (drawPixelForestBackground(biome, width, height)) {
+    return true
+  }
+
   if (biome === 'cave') {
     if (!drawCover('bgCave', 0, 0, width, height)) {
       return false
@@ -3027,6 +3035,26 @@ function drawAssetBackground(biome, width, height) {
   ctx.beginPath()
   ctx.arc(width - 76, 66, 28, 0, Math.PI * 2)
   ctx.fill()
+  return true
+}
+
+function drawPixelForestBackground(biome, width, height) {
+  if (biome !== 'forest' && biome !== 'deep_forest') {
+    return false
+  }
+  const key = biome === 'deep_forest' ? 'pixelBackgroundDeepForest' : 'pixelBackgroundForest'
+  if (!drawCover(key, 0, 0, width, height)) {
+    return false
+  }
+  if (biome === 'deep_forest') {
+    ctx.fillStyle = 'rgba(4, 9, 12, 0.24)'
+    ctx.fillRect(0, 0, width, height)
+  } else {
+    ctx.fillStyle = 'rgba(255, 238, 170, 0.12)'
+    ctx.beginPath()
+    ctx.arc(width - 76, 66, 28, 0, Math.PI * 2)
+    ctx.fill()
+  }
   return true
 }
 

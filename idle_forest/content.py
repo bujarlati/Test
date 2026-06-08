@@ -265,13 +265,13 @@ def generate_equipment(level: int, rng: random.Random) -> Equipment:
     base = max(1, item_level)
 
     attack = defense = max_hp = 0
-    attack_speed = hp_regen = attack_range = 0.0
+    attack_speed = hp_regen = move_speed = attack_range = 0.0
     weapon_type = None
     if slot == EquipmentSlot.WEAPON:
         attack = int((5 + base * 2) * multiplier)
         weapon_type = rng.choice(("axe", "blade", "spear"))
         attack_range = {"axe": 8.0, "blade": 4.0, "spear": 18.0}[weapon_type]
-        attack_speed = {"axe": -0.05, "blade": 0.08, "spear": -0.02}[weapon_type]
+        attack_speed = {"axe": 0.04, "blade": 0.18, "spear": 0.08}[weapon_type]
     elif slot == EquipmentSlot.HELMET:
         defense = int((2 + base) * multiplier)
         max_hp = int((5 + base * 2) * multiplier)
@@ -281,11 +281,12 @@ def generate_equipment(level: int, rng: random.Random) -> Equipment:
     elif slot == EquipmentSlot.BOOTS:
         defense = int((1 + base) * multiplier)
         max_hp = int((3 + base) * multiplier)
-        hp_regen = round(0.15 * multiplier, 2)
+        hp_regen = round(0.35 * multiplier, 2)
+        move_speed = round(0.045 * multiplier, 3)
     elif slot == EquipmentSlot.RING:
         attack = int((1 + base) * multiplier)
         max_hp = int((6 + base * 2) * multiplier)
-        attack_speed = round(0.03 * multiplier, 2)
+        attack_speed = round(0.09 * multiplier, 2)
 
     prefix = rng.choice(RARITY_NAME_PREFIX[rarity])
     noun = rng.choice(SLOT_NAME_PARTS[slot])
@@ -300,6 +301,7 @@ def generate_equipment(level: int, rng: random.Random) -> Equipment:
         max_hp=max_hp,
         attack_speed=attack_speed,
         hp_regen=hp_regen,
+        move_speed=move_speed,
         attack_range=attack_range,
         weapon_type=weapon_type,
         tradable=True,
@@ -320,13 +322,13 @@ def generate_special_set_equipment(
     base = max(1, item_level)
 
     attack = defense = max_hp = 0
-    attack_speed = hp_regen = attack_range = 0.0
+    attack_speed = hp_regen = move_speed = attack_range = 0.0
     weapon_type = None
     if slot == EquipmentSlot.WEAPON:
         attack = int((7 + base * 2.4) * multiplier)
         weapon_type = rng.choice(("axe", "blade", "spear"))
         attack_range = {"axe": 10.0, "blade": 6.0, "spear": 22.0}[weapon_type]
-        attack_speed = {"axe": -0.04, "blade": 0.1, "spear": 0.0}[weapon_type]
+        attack_speed = {"axe": 0.06, "blade": 0.22, "spear": 0.1}[weapon_type]
     elif slot == EquipmentSlot.HELMET:
         defense = int((3 + base * 1.2) * multiplier)
         max_hp = int((7 + base * 2.4) * multiplier)
@@ -336,11 +338,12 @@ def generate_special_set_equipment(
     elif slot == EquipmentSlot.BOOTS:
         defense = int((2 + base * 1.1) * multiplier)
         max_hp = int((6 + base * 1.8) * multiplier)
-        hp_regen = round(0.2 * multiplier, 2)
+        hp_regen = round(0.48 * multiplier, 2)
+        move_speed = round(0.065 * multiplier, 3)
     elif slot == EquipmentSlot.RING:
         attack = int((2 + base * 1.35) * multiplier)
         max_hp = int((10 + base * 2.4) * multiplier)
-        attack_speed = round(0.04 * multiplier, 2)
+        attack_speed = round(0.12 * multiplier, 2)
 
     bonus_multiplier = config.power_multiplier
     set_bonus = {
@@ -362,6 +365,7 @@ def generate_special_set_equipment(
         max_hp=max_hp,
         attack_speed=attack_speed,
         hp_regen=hp_regen,
+        move_speed=move_speed,
         attack_range=attack_range,
         weapon_type=weapon_type,
         tradable=True,
@@ -423,13 +427,13 @@ def generate_system_shop_equipment(
     base = max(1, item_level)
 
     attack = defense = max_hp = 0
-    attack_speed = hp_regen = attack_range = 0.0
+    attack_speed = hp_regen = move_speed = attack_range = 0.0
     weapon_type = None
     if slot == EquipmentSlot.WEAPON:
         attack = int((9 + base * 2.7) * multiplier)
         weapon_type = rng.choice(("blade", "spear"))
         attack_range = {"blade": 8.0, "spear": 24.0}[weapon_type]
-        attack_speed = {"blade": 0.14, "spear": 0.04}[weapon_type]
+        attack_speed = {"blade": 0.28, "spear": 0.14}[weapon_type]
     elif slot == EquipmentSlot.HELMET:
         defense = int((4 + base * 1.35) * multiplier)
         max_hp = int((10 + base * 2.6) * multiplier)
@@ -439,11 +443,12 @@ def generate_system_shop_equipment(
     elif slot == EquipmentSlot.BOOTS:
         defense = int((3 + base * 1.2) * multiplier)
         max_hp = int((8 + base * 2.0) * multiplier)
-        hp_regen = round(0.24 * multiplier, 2)
+        hp_regen = round(0.7 * multiplier, 2)
+        move_speed = round(0.09 * multiplier, 3)
     elif slot == EquipmentSlot.RING:
         attack = int((3 + base * 1.55) * multiplier)
         max_hp = int((12 + base * 2.6) * multiplier)
-        attack_speed = round(0.05 * multiplier, 2)
+        attack_speed = round(0.16 * multiplier, 2)
 
     slot_names = {
         EquipmentSlot.WEAPON: ("Prismatic Blade", "Radiant Edge"),
@@ -470,6 +475,7 @@ def generate_system_shop_equipment(
         max_hp=max_hp,
         attack_speed=attack_speed,
         hp_regen=hp_regen,
+        move_speed=move_speed,
         attack_range=attack_range,
         weapon_type=weapon_type,
         owner_id=owner_id,

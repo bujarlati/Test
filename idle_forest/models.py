@@ -83,6 +83,7 @@ class Equipment:
     max_hp: int = 0
     attack_speed: float = 0.0
     hp_regen: float = 0.0
+    move_speed: float = 0.0
     attack_range: float = 0.0
     weapon_type: str | None = None
     owner_id: str | None = None
@@ -98,6 +99,7 @@ class Equipment:
         special_bonus = 12 if self.special else 0
         speed_bonus = int(self.attack_speed * 30)
         regen_bonus = int(self.hp_regen * 4)
+        move_bonus = int(self.move_speed * 120)
         range_bonus = int(self.attack_range * 0.08)
         return (
             self.attack * 4
@@ -106,6 +108,7 @@ class Equipment:
             + self.level * 2
             + speed_bonus
             + regen_bonus
+            + move_bonus
             + range_bonus
             + special_bonus
         )
@@ -130,7 +133,7 @@ class Equipment:
         elif self.slot == EquipmentSlot.ARMOR:
             model = "plate_mail" if self.rarity in {Rarity.PURPLE, Rarity.GOLD, Rarity.RED, Rarity.RAINBOW} else "leather_mail"
         elif self.slot == EquipmentSlot.BOOTS:
-            model = "winged_boots" if self.attack_speed > 0 or self.hp_regen > 0.18 else "travel_boots"
+            model = "winged_boots" if self.move_speed > 0 or self.attack_speed > 0 or self.hp_regen > 0.18 else "travel_boots"
         elif self.slot == EquipmentSlot.RING:
             model = {
                 Rarity.WHITE: "sprout_pet",
@@ -163,6 +166,7 @@ class Equipment:
             "max_hp": self.max_hp,
             "attack_speed": round(self.attack_speed, 2),
             "hp_regen": round(self.hp_regen, 2),
+            "move_speed": round(self.move_speed, 3),
             "attack_range": round(self.attack_range, 2),
             "weapon_type": self.weapon_type,
             "owner_id": self.owner_id,
@@ -230,7 +234,8 @@ class Hero:
 
     @property
     def move_speed(self) -> float:
-        return self.speed * (1 + self.talent_pct("move_speed_pct"))
+        equipment_bonus = sum(item.move_speed for item in self.equipped.values())
+        return self.speed * (1 + self.talent_pct("move_speed_pct") + equipment_bonus)
 
     @property
     def attack_speed(self) -> float:

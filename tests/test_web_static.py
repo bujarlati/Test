@@ -271,6 +271,17 @@ class WebStaticTests(unittest.TestCase):
             self.assertTrue(image_path.exists(), image_path)
             self.assertEqual(image_path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
             self.assertIn("animations", asset)
+            self.assertEqual(asset["source"], "pixellab")
+
+        for key in ("forest", "deep_forest"):
+            asset = manifest["maps"][key]
+            image_path = ROOT / asset["image"].lstrip("/")
+            self.assertTrue(image_path.exists(), image_path)
+            self.assertEqual(image_path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+            width, height, _pixels = read_png(image_path)
+            self.assertEqual(width, asset["width"])
+            self.assertEqual(height, asset["height"])
+            self.assertEqual(asset["source"], "pixellab")
 
     def test_female_assassin_has_distinct_silhouette_from_male_assassin(self) -> None:
         male_path = ROOT / "web" / "assets" / "pixel" / "v1" / "heroes" / "male" / "assassin_sample.png"
@@ -490,10 +501,10 @@ class WebStaticTests(unittest.TestCase):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
-        self.assertIn('/web/app.js?v=assassin-v57', html)
-        self.assertIn('/web/styles.css?v=assassin-v57', html)
+        self.assertIn('/web/app.js?v=assassin-v58', html)
+        self.assertIn('/web/styles.css?v=assassin-v58', html)
         self.assertIn("PIXEL_ASSET_VERSION", script)
-        self.assertIn("assassin-v57", script)
+        self.assertIn("assassin-v58", script)
         self.assertIn("?v=${PIXEL_ASSET_VERSION}", script)
 
     def test_stage_loading_waits_for_current_hero_sprite_before_revealing_canvas(self) -> None:
@@ -978,6 +989,10 @@ class WebStaticTests(unittest.TestCase):
     def test_background_scroll_uses_continuous_visual_camera(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
+        self.assertIn("pixelBackgroundForest", script)
+        self.assertIn("pixelBackgroundDeepForest", script)
+        self.assertIn("function drawPixelForestBackground(", script)
+        self.assertIn("drawPixelForestBackground(biome, width, height)", script)
         self.assertIn("visualCameraOffset", script)
         self.assertIn("cameraTargetX", script)
         self.assertIn("function visualCameraTarget(", script)

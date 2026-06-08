@@ -15,7 +15,13 @@ from idle_forest.config import (
     MONSTER_APPROACH_DISTANCE,
     TREASURE_MIMIC_PITY_THRESHOLD,
 )
-from idle_forest.content import create_treasure_mimic, generate_equipment, generate_special_set_equipment, system_shop_catalog
+from idle_forest.content import (
+    create_treasure_mimic,
+    generate_equipment,
+    generate_special_set_equipment,
+    generate_system_shop_equipment,
+    system_shop_catalog,
+)
 from idle_forest.models import Equipment, EquipmentSlot, Monster, Rarity, TalentTier
 from idle_forest.talents import TALENT_CATALOG
 
@@ -305,6 +311,59 @@ class GameEngineTests(unittest.TestCase):
 
         self.assertIsNone(slow.active_monster)
         self.assertIsNotNone(fast.active_monster)
+
+    def test_equipment_move_speed_bonus_affects_hero_speed_and_snapshot(self) -> None:
+        engine = GameEngine(seed=103)
+        speed_boots = Equipment(
+            id="speed_boots",
+            name="Windstep Boots",
+            slot=EquipmentSlot.BOOTS,
+            rarity=Rarity.BLUE,
+            level=5,
+            defense=3,
+            max_hp=8,
+            move_speed=0.18,
+        )
+
+        engine.hero.equipped[EquipmentSlot.BOOTS] = speed_boots
+        snapshot = engine.snapshot()
+
+        self.assertAlmostEqual(engine.hero.move_speed, engine.hero.speed * 1.18)
+        self.assertEqual(snapshot["hero"]["equipped"]["boots"]["move_speed"], 0.18)
+        self.assertAlmostEqual(snapshot["hero"]["speed"], engine.hero.move_speed, places=2)
+
+    def test_system_shop_boots_have_large_movement_and_regen_bonuses(self) -> None:
+        engine = GameEngine(seed=104)
+
+        boots = generate_system_shop_equipment("rainbow_boots", hero_level=25, rng=engine.rng)
+
+        self.assertGreaterEqual(boots.move_speed, 0.35)
+        self.assertGreaterEqual(boots.hp_regen, 4.5)
+
+    def test_generated_speed_and_recovery_stats_are_scored(self) -> None:
+        base = Equipment(
+            id="base_boots",
+            name="Plain Boots",
+            slot=EquipmentSlot.BOOTS,
+            rarity=Rarity.WHITE,
+            level=5,
+            defense=3,
+            max_hp=8,
+        )
+        tuned = Equipment(
+            id="swift_boots",
+            name="Swift Boots",
+            slot=EquipmentSlot.BOOTS,
+            rarity=Rarity.WHITE,
+            level=5,
+            defense=3,
+            max_hp=8,
+            move_speed=0.12,
+            hp_regen=1.2,
+            attack_speed=0.08,
+        )
+
+        self.assertGreater(tuned.score, base.score + 15)
 
     def test_combat_can_award_gold_or_loot(self) -> None:
         engine = GameEngine(seed=2)

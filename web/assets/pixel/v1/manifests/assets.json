@@ -468,6 +468,7 @@
       "frameHeight": 64,
       "drawWidth": 70,
       "drawHeight": 70,
+      "source": "pixellab",
       "animations": {
         "idle": {
           "row": 0,
@@ -502,6 +503,7 @@
       "frameHeight": 64,
       "drawWidth": 72,
       "drawHeight": 72,
+      "source": "pixellab",
       "animations": {
         "idle": {
           "row": 0,
@@ -536,6 +538,7 @@
       "frameHeight": 64,
       "drawWidth": 70,
       "drawHeight": 70,
+      "source": "pixellab",
       "animations": {
         "idle": {
           "row": 0,
@@ -570,6 +573,7 @@
       "frameHeight": 128,
       "drawWidth": 126,
       "drawHeight": 126,
+      "source": "pixellab",
       "animations": {
         "idle": {
           "row": 0,
@@ -599,7 +603,20 @@
       }
     }
   },
-  "maps": {},
+  "maps": {
+    "forest": {
+      "image": "/web/assets/pixel/v1/maps/background_forest.png",
+      "width": 384,
+      "height": 160,
+      "source": "pixellab"
+    },
+    "deep_forest": {
+      "image": "/web/assets/pixel/v1/maps/background_deep_forest.png",
+      "width": 384,
+      "height": 160,
+      "source": "pixellab"
+    }
+  },
   "effects": {
     "talent_lightning": {
       "image": "/web/assets/pixel/v1/effects/talent_lightning.png",

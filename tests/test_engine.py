@@ -15,7 +15,7 @@ from idle_forest.config import (
     MONSTER_APPROACH_DISTANCE,
     TREASURE_MIMIC_PITY_THRESHOLD,
 )
-from idle_forest.content import create_treasure_mimic, generate_equipment
+from idle_forest.content import create_treasure_mimic, generate_equipment, generate_special_set_equipment
 from idle_forest.models import Equipment, EquipmentSlot, Monster, Rarity, TalentTier
 from idle_forest.talents import TALENT_CATALOG
 
@@ -55,6 +55,91 @@ class GameEngineTests(unittest.TestCase):
             [talent["id"] for talent in snapshot["hero"]["talents"]],
         )
         self.assertEqual(hero_entity["talent_effects"], snapshot["hero"]["talent_effects"])
+
+    def test_system_shop_sells_rainbow_equipment_stronger_than_red(self) -> None:
+        engine = GameEngine(seed=201, starter_gold=250000)
+        red = generate_special_set_equipment(20, engine.rng, rarity=Rarity.RED)
+
+        result = engine.buy_system_shop_item("rainbow_weapon")
+        bought = result["purchase"]["item"]
+
+        self.assertEqual(bought["rarity"], "rainbow")
+        self.assertEqual(bought["slot"], "weapon")
+        self.assertGreater(bought["score"], red.score)
+        self.assertLess(engine.hero.gold, 250000)
+        self.assertIn(bought["id"], [item.id for item in engine.hero.inventory])
+
+    def test_system_shop_purchase_fails_without_enough_gold(self) -> None:
+        engine = GameEngine(seed=206, starter_gold=1)
+
+        with self.assertRaises(ValueError):
+            engine.buy_system_shop_item("rainbow_weapon")
+
+    def test_recycle_inventory_item_grants_score_gold(self) -> None:
+        engine = GameEngine(seed=202, starter_gold=10)
+        item = generate_equipment(8, engine.rng)
+        item.owner_id = engine.hero.id
+        engine.hero.inventory.append(item)
+
+        result = engine.recycle_item(item.id)
+
+        self.assertEqual(result["gold"], item.score)
+        self.assertEqual(engine.hero.gold, 10 + item.score)
+        self.assertNotIn(item.id, [owned.id for owned in engine.hero.inventory])
+
+    def test_recycle_all_inventory_grants_sum_of_scores_and_keeps_equipped(self) -> None:
+        engine = GameEngine(seed=207, starter_gold=20)
+        equipped = engine.hero.equipped[EquipmentSlot.WEAPON]
+        first = generate_equipment(5, engine.rng)
+        second = generate_equipment(7, engine.rng)
+        first.owner_id = engine.hero.id
+        second.owner_id = engine.hero.id
+        engine.hero.inventory.extend([first, second])
+
+        result = engine.recycle_all_inventory()
+
+        self.assertEqual(result["gold"], first.score + second.score)
+        self.assertEqual(engine.hero.gold, 20 + first.score + second.score)
+        self.assertEqual(engine.hero.inventory, [])
+        self.assertEqual(engine.hero.equipped[EquipmentSlot.WEAPON].id, equipped.id)
+
+    def test_sell_own_listing_uses_score_not_listing_price(self) -> None:
+        engine = GameEngine(seed=203, starter_gold=0)
+        item = generate_equipment(8, engine.rng)
+        item.owner_id = engine.hero.id
+        engine.hero.inventory.append(item)
+        listing = engine.list_item(item.id, price=999999)
+
+        result = engine.sell_own_listing_to_system(listing.id)
+
+        self.assertEqual(result["gold"], item.score)
+        self.assertEqual(engine.hero.gold, item.score)
+        self.assertFalse(engine.market.get_listing(listing.id).active)
+        self.assertNotIn(item.id, [owned.id for owned in engine.hero.inventory])
+
+    def test_donation_expansion_requires_all_talents_to_be_mythic(self) -> None:
+        engine = GameEngine(seed=204)
+        engine.hero.donations = 5
+        engine.hero.talents = [
+            TALENT_CATALOG[TalentTier.MYTHIC][0],
+            TALENT_CATALOG[TalentTier.MYTHIC][1],
+            TALENT_CATALOG[TalentTier.TRANSCENDENT][0],
+        ]
+
+        with self.assertRaises(ValueError):
+            engine.donate_for_talent()
+
+    def test_donation_expansion_costs_five_donations_and_adds_talent(self) -> None:
+        engine = GameEngine(seed=205)
+        engine.hero.donations = 5
+        engine.hero.talents = TALENT_CATALOG[TalentTier.MYTHIC][:3]
+
+        result = engine.donate_for_talent()
+
+        self.assertEqual(result["spent"], 5)
+        self.assertEqual(engine.hero.donations, 0)
+        self.assertEqual(len(engine.hero.talents), 4)
+        self.assertEqual(result["talent"]["id"], engine.hero.talents[-1].id)
 
     def test_ring_equipment_appearance_is_a_pet_companion(self) -> None:
         item = Equipment(

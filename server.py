@@ -245,6 +245,17 @@ def _cancel_market_listing(character_id: str, runtime: RuntimeState, listing_id:
         return item, _snapshot_for_character(character_id, runtime)
 
 
+def _sell_market_listing_to_system(character_id: str, runtime: RuntimeState, listing_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    with MARKET_LOCK:
+        try:
+            result = runtime.engine.sell_own_listing_to_system(listing_id=listing_id)
+        except KeyError:
+            result = _sell_shared_market_listing_to_system(character_id, runtime, listing_id)
+        else:
+            _save_character_runtime(character_id, runtime)
+        return result, _snapshot_for_character(character_id, runtime)
+
+
 def _cancel_shared_market_listing(character_id: str, runtime: RuntimeState, listing_id: str) -> Any:
     listing_record = SAVE_STORE.load_market_listing(listing_id)
     listing = listing_record["listing"]
@@ -257,6 +268,20 @@ def _cancel_shared_market_listing(character_id: str, runtime: RuntimeState, list
     item = runtime.engine.cancel_listing(listing_id)
     _save_character_runtime(character_id, runtime)
     return item
+
+
+def _sell_shared_market_listing_to_system(character_id: str, runtime: RuntimeState, listing_id: str) -> dict[str, Any]:
+    listing_record = SAVE_STORE.load_market_listing(listing_id)
+    listing = listing_record["listing"]
+    if listing.seller_id != runtime.engine.hero.id:
+        raise PermissionError("only seller can sell listing")
+    if not listing.active:
+        raise ValueError("listing is not active")
+
+    runtime.engine.market._listings[listing.id] = listing
+    result = runtime.engine.sell_own_listing_to_system(listing_id)
+    _save_character_runtime(character_id, runtime)
+    return result
 
 
 def _buy_shared_market_listing(character_id: str, runtime: RuntimeState, listing_id: str) -> Any:
@@ -620,6 +645,54 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                     _save_game()
                 self._send_json({"talent": result, "snapshot": snapshot})
                 return
+            if path == "/talent/donate":
+                active = self._active_runtime_or_none()
+                engine = active[2].engine if active is not None else ENGINE
+                result = engine.donate_for_talent()
+                if active is not None:
+                    _save_character_runtime(active[1], active[2])
+                    snapshot = _snapshot_for_character(active[1], active[2])
+                else:
+                    snapshot = engine.snapshot()
+                    _save_game()
+                self._send_json({"talent": result, "snapshot": snapshot})
+                return
+            if path == "/system-shop/buy":
+                active = self._active_runtime_or_none()
+                engine = active[2].engine if active is not None else ENGINE
+                result = engine.buy_system_shop_item(sku=str(payload["sku"]))
+                if active is not None:
+                    _save_character_runtime(active[1], active[2])
+                    snapshot = _snapshot_for_character(active[1], active[2])
+                else:
+                    snapshot = engine.snapshot()
+                    _save_game()
+                self._send_json({"purchase": result["purchase"], "snapshot": snapshot})
+                return
+            if path == "/inventory/recycle":
+                active = self._active_runtime_or_none()
+                engine = active[2].engine if active is not None else ENGINE
+                result = engine.recycle_item(item_id=str(payload["item_id"]))
+                if active is not None:
+                    _save_character_runtime(active[1], active[2])
+                    snapshot = _snapshot_for_character(active[1], active[2])
+                else:
+                    snapshot = engine.snapshot()
+                    _save_game()
+                self._send_json({"recycle": result, "snapshot": snapshot})
+                return
+            if path == "/inventory/recycle-all":
+                active = self._active_runtime_or_none()
+                engine = active[2].engine if active is not None else ENGINE
+                result = engine.recycle_all_inventory()
+                if active is not None:
+                    _save_character_runtime(active[1], active[2])
+                    snapshot = _snapshot_for_character(active[1], active[2])
+                else:
+                    snapshot = engine.snapshot()
+                    _save_game()
+                self._send_json({"recycle": result, "snapshot": snapshot})
+                return
             if path == "/market/list":
                 active = self._active_runtime_or_none()
                 engine = active[2].engine if active is not None else ENGINE
@@ -665,6 +738,20 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                     snapshot = ENGINE.snapshot()
                     _save_game()
                 self._send_json({"item": item.to_dict(), "snapshot": snapshot})
+                return
+            if path == "/market/sell-to-system":
+                active = self._active_runtime_or_none()
+                if active is not None:
+                    result, snapshot = _sell_market_listing_to_system(
+                        active[1],
+                        active[2],
+                        str(payload["listing_id"]),
+                    )
+                else:
+                    result = ENGINE.sell_own_listing_to_system(str(payload["listing_id"]))
+                    snapshot = ENGINE.snapshot()
+                    _save_game()
+                self._send_json({"sale": result, "snapshot": snapshot})
                 return
         except PermissionError as exc:
             self._send_json({"error": str(exc)}, status=HTTPStatus.UNAUTHORIZED)

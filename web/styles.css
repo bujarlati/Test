@@ -291,6 +291,12 @@ h2 {
   color: var(--muted);
 }
 
+.panel-head .panel-action {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 .resource {
   min-width: 108px;
   padding: 10px 14px;
@@ -777,6 +783,26 @@ h2 {
 .tier-rare { border-left-color: #9b5cff; }
 .tier-transcendent { border-left-color: #ffab00; }
 .tier-mythic { border-left-color: #ff4d4f; }
+.talent-expand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 42px;
+  padding: 9px;
+  border: 1px solid rgba(255, 202, 85, 0.22);
+  border-radius: 7px;
+  background: rgba(255, 202, 85, 0.08);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.talent-expand-row button {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 .creation-talent .item-sub {
   line-height: 1.4;
 }
@@ -785,6 +811,34 @@ h2 {
   background:
     linear-gradient(90deg, rgba(255, 202, 85, 0.12), rgba(245, 236, 214, 0.06)),
     rgba(245, 236, 214, 0.07);
+}
+
+.item.rarity-rainbow,
+.equipment-slot.rarity-rainbow {
+  background:
+    linear-gradient(90deg, rgba(142, 255, 255, 0.13), rgba(255, 120, 230, 0.09)),
+    rgba(245, 236, 214, 0.07);
+}
+
+.shop-token {
+  display: grid;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgba(245, 236, 214, 0.2);
+  border-radius: 7px;
+  background: rgba(245, 236, 214, 0.08);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.shop-token.rarity-rainbow {
+  border-color: rgba(142, 255, 255, 0.58);
+  box-shadow: 0 0 16px rgba(255, 120, 230, 0.28);
+  color: #fff36a;
 }
 
 .item-main {
@@ -1081,6 +1135,7 @@ h2 {
 .rarity-purple { border-left-color: #9b5cff; }
 .rarity-gold { border-left-color: #ffab00; }
 .rarity-red { border-left-color: #ff4d4f; }
+.rarity-rainbow { border-left-color: #8effff; }
 
 @media (max-width: 860px) {
   .hero-strip,

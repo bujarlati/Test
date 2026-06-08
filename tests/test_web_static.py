@@ -64,6 +64,29 @@ class WebStaticTests(unittest.TestCase):
         ):
             self.assertIn(marker, html)
 
+    def test_frontend_renders_system_shop_recycling_and_donation_controls(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        for marker in (
+            "systemShopList",
+            "recycleAllButton",
+        ):
+            self.assertIn(marker, html)
+
+        for marker in (
+            "renderSystemShop",
+            "/system-shop/buy",
+            "/inventory/recycle",
+            "/inventory/recycle-all",
+            "/market/sell-to-system",
+            "/talent/donate",
+            "sell-to-system",
+            "expand-talent",
+            "rainbow",
+        ):
+            self.assertIn(marker, script)
+
     def test_frontend_has_account_login_and_three_character_slots(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -462,10 +485,10 @@ class WebStaticTests(unittest.TestCase):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
-        self.assertIn('/web/app.js?v=assassin-v53', html)
-        self.assertIn('/web/styles.css?v=assassin-v53', html)
+        self.assertIn('/web/app.js?v=assassin-v54', html)
+        self.assertIn('/web/styles.css?v=assassin-v54', html)
         self.assertIn("PIXEL_ASSET_VERSION", script)
-        self.assertIn("assassin-v53", script)
+        self.assertIn("assassin-v54", script)
         self.assertIn("?v=${PIXEL_ASSET_VERSION}", script)
 
     def test_stage_loading_waits_for_current_hero_sprite_before_revealing_canvas(self) -> None:
@@ -758,6 +781,26 @@ class WebStaticTests(unittest.TestCase):
             "talentAuraStyle",
             "move_speed_pct",
             "drawLightningAura",
+        ):
+            self.assertIn(marker, script)
+
+    def test_pixellab_talent_effect_assets_exist_and_are_wired(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        manifest = json.loads((ROOT / "web" / "assets" / "pixel" / "v1" / "manifests" / "assets.json").read_text(encoding="utf-8"))
+
+        for name in ("talent_lightning", "talent_flame", "talent_dragon"):
+            path = ROOT / "web" / "assets" / "pixel" / "v1" / "effects" / f"{name}.png"
+            self.assertTrue(path.exists(), name)
+            width, height, pixels = read_png(path)
+            self.assertEqual((width, height), (128, 128))
+            self.assertGreater(sum(pixels[3::4]), 0, name)
+            self.assertIn(name, manifest["effects"])
+
+        for marker in (
+            "talentLightningEffect",
+            "talentFlameEffect",
+            "talentDragonEffect",
+            "drawPixellabTalentAura",
         ):
             self.assertIn(marker, script)
 

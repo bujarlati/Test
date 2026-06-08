@@ -14,6 +14,7 @@ class Rarity(str, Enum):
     PURPLE = "purple"
     GOLD = "gold"
     RED = "red"
+    RAINBOW = "rainbow"
 
 
 class EquipmentSlot(str, Enum):
@@ -31,6 +32,7 @@ RARITY_APPEARANCE: dict[Rarity, dict[str, str]] = {
     Rarity.PURPLE: {"primary": "#b779ff", "accent": "#7543bd", "glow": "#9b5cff"},
     Rarity.GOLD: {"primary": "#ffdc7d", "accent": "#b98221", "glow": "#ffca55"},
     Rarity.RED: {"primary": "#ff7a7c", "accent": "#9e2e3a", "glow": "#ff4d4f"},
+    Rarity.RAINBOW: {"primary": "#8effff", "accent": "#ff78e6", "glow": "#fff36a"},
 }
 
 SLOT_ICON_SHAPES: dict[EquipmentSlot, str] = {
@@ -124,9 +126,9 @@ class Equipment:
                 }
                 accent = "starter"
         elif self.slot == EquipmentSlot.HELMET:
-            model = "crown_helm" if self.rarity in {Rarity.GOLD, Rarity.RED} else "visor_helm"
+            model = "crown_helm" if self.rarity in {Rarity.GOLD, Rarity.RED, Rarity.RAINBOW} else "visor_helm"
         elif self.slot == EquipmentSlot.ARMOR:
-            model = "plate_mail" if self.rarity in {Rarity.PURPLE, Rarity.GOLD, Rarity.RED} else "leather_mail"
+            model = "plate_mail" if self.rarity in {Rarity.PURPLE, Rarity.GOLD, Rarity.RED, Rarity.RAINBOW} else "leather_mail"
         elif self.slot == EquipmentSlot.BOOTS:
             model = "winged_boots" if self.attack_speed > 0 or self.hp_regen > 0.18 else "travel_boots"
         elif self.slot == EquipmentSlot.RING:
@@ -137,6 +139,7 @@ class Equipment:
                 Rarity.PURPLE: "star_bunny_pet",
                 Rarity.GOLD: "spark_fox_pet",
                 Rarity.RED: "ember_fox_pet",
+                Rarity.RAINBOW: "ember_fox_pet",
             }[self.rarity]
 
         return {
@@ -144,7 +147,7 @@ class Equipment:
             "model": model,
             "palette": palette,
             "accent": accent,
-            "aura": self.special or self.rarity in {Rarity.PURPLE, Rarity.GOLD, Rarity.RED},
+            "aura": self.special or self.rarity in {Rarity.PURPLE, Rarity.GOLD, Rarity.RED, Rarity.RAINBOW},
             "icon_shape": SLOT_ICON_SHAPES[self.slot],
         }
 
@@ -193,6 +196,7 @@ class Hero:
     y: float = 220.0
     speed: float = 38.0
     talent_scrolls: int = 0
+    donations: int = 0
     talents: list[Talent] = field(default_factory=list)
     inventory: list[Equipment] = field(default_factory=list)
     equipped: dict[EquipmentSlot, Equipment] = field(default_factory=dict)
@@ -320,6 +324,12 @@ class Hero:
             }
         return active
 
+    @property
+    def can_expand_talent_with_donations(self) -> bool:
+        return bool(self.talents) and self.donations >= 5 and all(
+            talent.tier == TalentTier.MYTHIC for talent in self.talents
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -341,6 +351,8 @@ class Hero:
             "position": {"x": round(self.x, 2), "y": round(self.y, 2)},
             "speed": round(self.move_speed, 2),
             "talent_scrolls": self.talent_scrolls,
+            "donations": self.donations,
+            "can_expand_talent": self.can_expand_talent_with_donations,
             "talents": [talent.to_dict() for talent in self.talents],
             "talent_effects": self.talent_effect_totals(),
             "inventory": [item.to_dict() for item in self.inventory],

@@ -600,5 +600,21 @@
     }
   },
   "maps": {},
-  "effects": {}
+  "effects": {
+    "talent_lightning": {
+      "image": "/web/assets/pixel/v1/effects/talent_lightning.png",
+      "frameWidth": 128,
+      "frameHeight": 128
+    },
+    "talent_flame": {
+      "image": "/web/assets/pixel/v1/effects/talent_flame.png",
+      "frameWidth": 128,
+      "frameHeight": 128
+    },
+    "talent_dragon": {
+      "image": "/web/assets/pixel/v1/effects/talent_dragon.png",
+      "frameWidth": 128,
+      "frameHeight": 128
+    }
+  }
 }

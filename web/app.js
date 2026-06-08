@@ -12,7 +12,8 @@ const RARITY_LABELS = {
   blue: '蓝',
   purple: '紫',
   gold: '金',
-  red: '红'
+  red: '红',
+  rainbow: '彩'
 }
 
 const TALENT_TIER_LABELS = {
@@ -43,7 +44,8 @@ const FALLBACK_GEAR_PALETTES = {
   blue: { primary: '#68b7ff', accent: '#2b78c2', glow: '#2684ff' },
   purple: { primary: '#b779ff', accent: '#7543bd', glow: '#9b5cff' },
   gold: { primary: '#ffdc7d', accent: '#b98221', glow: '#ffca55' },
-  red: { primary: '#ff7a7c', accent: '#9e2e3a', glow: '#ff4d4f' }
+  red: { primary: '#ff7a7c', accent: '#9e2e3a', glow: '#ff4d4f' },
+  rainbow: { primary: '#8effff', accent: '#ff78e6', glow: '#fff36a' }
 }
 
 const PROFILE_STORAGE_KEY = 'idleForestProfile'
@@ -66,7 +68,7 @@ const MONSTER_SPAWN_SCREEN_BUFFER = 820
 const COMBAT_VISUAL_RANGE_GRACE = 16
 const LOOT_FLOAT_DURATION_MS = 2400
 const ATTACK_EFFECT_DURATION_MS = 520
-const PIXEL_ASSET_VERSION = 'assassin-v53'
+const PIXEL_ASSET_VERSION = 'assassin-v54'
 const DEFAULT_SETTINGS = {
   paused: false,
   volume: 0.7,
@@ -151,7 +153,21 @@ const UI_TEXT = {
     confirmList: '确认挂售',
     cancel: '取消',
     invalidPrice: '请输入有效价格',
-    actionFail: '操作失败'
+    actionFail: '操作失败',
+    systemShop: '系统商城',
+    systemShopEmpty: '系统商城暂时缺货',
+    donation: '捐赠',
+    donations: '捐赠',
+    buyDonation: '购买捐赠',
+    recycle: '回收',
+    recycling: '回收中',
+    recycleAll: '一键回收',
+    sellSystem: '卖给系统',
+    sellingSystem: '售出中',
+    expandTalent: '捐赠解锁天赋',
+    expandingTalent: '解锁中',
+    shopBuy: '购买',
+    shopBuying: '购买中'
   },
   'en-US': {
     settings: 'Settings',
@@ -230,7 +246,21 @@ const UI_TEXT = {
     confirmList: 'Confirm',
     cancel: 'Cancel',
     invalidPrice: 'Enter a valid price',
-    actionFail: 'Action failed'
+    actionFail: 'Action failed',
+    systemShop: 'System Shop',
+    systemShopEmpty: 'System shop is empty',
+    donation: 'Donation',
+    donations: 'Donations',
+    buyDonation: 'Buy Donation',
+    recycle: 'Recycle',
+    recycling: 'Recycling',
+    recycleAll: 'Recycle All',
+    sellSystem: 'Sell to System',
+    sellingSystem: 'Selling',
+    expandTalent: 'Unlock Talent',
+    expandingTalent: 'Unlocking',
+    shopBuy: 'Buy',
+    shopBuying: 'Buying'
   }
 }
 
@@ -254,12 +284,16 @@ const state = {
   listingDraftItemId: null,
   listingDraftItem: null,
   inventoryRenderSignature: '',
+  systemShopRenderSignature: '',
   marketRenderSignature: '',
   equipmentSlotsRenderSignature: '',
   equippedRenderSignature: '',
   talentsRenderSignature: '',
   eventsRenderSignature: '',
   marketActionInFlightIds: new Set(),
+  inventoryActionInFlightIds: new Set(),
+  systemShopActionInFlightSkus: new Set(),
+  recycleAllInFlight: false,
   talentEvolutionInFlight: false,
   lastRenderAt: 0,
   loadedAssets: 0,
@@ -337,7 +371,10 @@ const ASSET_PATHS = {
   equipmentMoonCatPet: `/web/assets/pixel/v1/equipment/moon_cat_pet.png?v=${PIXEL_ASSET_VERSION}`,
   equipmentStarBunnyPet: `/web/assets/pixel/v1/equipment/star_bunny_pet.png?v=${PIXEL_ASSET_VERSION}`,
   equipmentSparkFoxPet: `/web/assets/pixel/v1/equipment/spark_fox_pet.png?v=${PIXEL_ASSET_VERSION}`,
-  equipmentEmberFoxPet: `/web/assets/pixel/v1/equipment/ember_fox_pet.png?v=${PIXEL_ASSET_VERSION}`
+  equipmentEmberFoxPet: `/web/assets/pixel/v1/equipment/ember_fox_pet.png?v=${PIXEL_ASSET_VERSION}`,
+  talentLightningEffect: `/web/assets/pixel/v1/effects/talent_lightning.png?v=${PIXEL_ASSET_VERSION}`,
+  talentFlameEffect: `/web/assets/pixel/v1/effects/talent_flame.png?v=${PIXEL_ASSET_VERSION}`,
+  talentDragonEffect: `/web/assets/pixel/v1/effects/talent_dragon.png?v=${PIXEL_ASSET_VERSION}`
 }
 
 const EQUIPMENT_MODEL_ASSET_KEYS = {
@@ -611,6 +648,8 @@ const els = {
   talentCatalogText: document.querySelector('#talentCatalogText'),
   equipmentSlotList: document.querySelector('#equipmentSlotList'),
   equippedList: document.querySelector('#equippedList'),
+  systemShopList: document.querySelector('#systemShopList'),
+  recycleAllButton: document.querySelector('#recycleAllButton'),
   inventoryList: document.querySelector('#inventoryList'),
   marketList: document.querySelector('#marketList'),
   eventList: document.querySelector('#eventList'),
@@ -739,6 +778,7 @@ function applyStaticTranslations() {
   setText('#tickButton', t('pushTen'))
   setText('#equipBestButton', t('equipBest'))
   setText('#resetButton', t('reset'))
+  setText('#recycleAllButton', t('recycleAll'))
   setText('#rollTalentButton', currentLanguage() === 'zh-CN' ? 'Roll 天赋' : 'Roll Talents')
   setText('#confirmCharacterButton', currentLanguage() === 'zh-CN' ? '确认角色' : 'Confirm Hero')
   const rows = document.querySelectorAll('.setting-row span')
@@ -773,6 +813,7 @@ function toggleSettingsPanel(show) {
 
 function resetListRenderSignatures() {
   state.inventoryRenderSignature = ''
+  state.systemShopRenderSignature = ''
   state.marketRenderSignature = ''
   state.equipmentSlotsRenderSignature = ''
   state.equippedRenderSignature = ''
@@ -1481,6 +1522,7 @@ function applySnapshot(snapshot) {
   renderEquipmentSlots(hero.equipment_slots || [], hero.equipped || {}, false)
   renderEquipped(hero.equipped || {}, false)
   renderTalents(hero.talents || [], hero.talent_scrolls || 0, snapshot.talent || {}, false)
+  renderSystemShop((snapshot.system_shop && snapshot.system_shop.items) || [], hero.gold || 0, false)
   renderInventory(hero.inventory || [], false)
   renderMarket((snapshot.market && snapshot.market.active) || [], hero.id, false)
   renderEvents(snapshot.events || [], false)
@@ -1503,12 +1545,20 @@ function renderTalents(talents, scrolls, talentMeta, force = true) {
     return
   }
   state.talentsRenderSignature = signature
-  els.talentScrollText.textContent = `${t('talentScrolls')} ${scrolls}`
+  const donations = Number(talentMeta.donations || 0)
+  els.talentScrollText.textContent = `${t('talentScrolls')} ${scrolls} · ${t('donations')} ${donations}`
   els.talentCatalogText.textContent = `${t('catalog')} ${talentMeta.total_catalog_count || 0} · ${t('perLevel')}`
   if (!talents.length) {
     els.talentList.innerHTML = `<div class="empty">${t('noTalents')}</div>`
     return
   }
+  const expandDisabled = !talentMeta.can_expand || state.talentEvolutionInFlight
+  const expandHtml = `
+    <div class="talent-expand-row">
+      <span>${t('donations')} ${donations} / ${talentMeta.donation_cost || 5}</span>
+      <button data-action="expand-talent" ${expandDisabled ? 'disabled' : ''}>${state.talentEvolutionInFlight ? t('expandingTalent') : t('expandTalent')}</button>
+    </div>
+  `
   els.talentList.innerHTML = talents
     .map((talent) => {
       const locked = talent.tier === 'mythic'
@@ -1526,7 +1576,7 @@ function renderTalents(talents, scrolls, talentMeta, force = true) {
         </article>
       `
     })
-    .join('')
+    .join('') + expandHtml
 }
 
 function renderCurrentTalents() {
@@ -1570,6 +1620,9 @@ function equippedSignature(equipped) {
 function talentsSignature(talents, scrolls, talentMeta) {
   return JSON.stringify({
     scrolls,
+    donations: talentMeta.donations || 0,
+    canExpand: !!talentMeta.can_expand,
+    evolving: state.talentEvolutionInFlight,
     total: talentMeta.total_catalog_count || 0,
     talents: talents.map((talent) => ({
       id: talent.id,
@@ -1656,7 +1709,43 @@ function itemSignature(item) {
 }
 
 function inventorySignature(items) {
-  return items.map((item) => itemSignature(item)).join('|')
+  return JSON.stringify({
+    recycleAllInFlight: state.recycleAllInFlight,
+    pending: Array.from(state.inventoryActionInFlightIds).sort(),
+    items: items.map((item) => itemSignature(item))
+  })
+}
+
+function expandTalentWithDonations(button) {
+  if (state.talentEvolutionInFlight) {
+    return
+  }
+  state.talentEvolutionInFlight = true
+  button.disabled = true
+  renderCurrentTalents()
+  postAction('/talent/donate', {}, t('expandTalent'))
+    .finally(() => {
+      state.talentEvolutionInFlight = false
+      renderCurrentTalents()
+    })
+}
+
+function systemShopSignature(items, heroGold) {
+  return JSON.stringify({
+    heroGold,
+    pending: Array.from(state.systemShopActionInFlightSkus).sort(),
+    items: items.map((item) => ({
+      sku: item.sku,
+      name: item.name,
+      kind: item.kind,
+      slot: item.slot,
+      rarity: item.rarity,
+      level: item.level,
+      price: item.price,
+      affordable: item.affordable,
+      description: item.description
+    }))
+  })
 }
 
 function marketSignature(listings, heroId) {
@@ -1672,9 +1761,57 @@ function marketSignature(listings, heroId) {
     .join('|')
 }
 
+function renderSystemShop(items, heroGold, force = true) {
+  if (!els.systemShopList) {
+    return
+  }
+  const signature = systemShopSignature(items, heroGold)
+  if (!force && state.systemShopRenderSignature === signature) {
+    return
+  }
+  state.systemShopRenderSignature = signature
+  if (!items.length) {
+    els.systemShopList.innerHTML = `<div class="empty">${t('systemShopEmpty')}</div>`
+    return
+  }
+  els.systemShopList.innerHTML = items
+    .map((entry) => {
+      const pending = state.systemShopActionInFlightSkus.has(entry.sku)
+      const affordable = entry.affordable !== false && Number(heroGold || 0) >= Number(entry.price || 0)
+      const rarity = entry.rarity || (entry.kind === 'donation' ? 'gold' : 'white')
+      const token = entry.kind === 'donation' ? 'D' : slotLabel(entry.slot || '')
+      const subLine = entry.kind === 'donation'
+        ? t('buyDonation')
+        : `${slotLabel(entry.slot)} · ${rarityLabel(entry.rarity)} · Lv.${entry.level || 1}`
+      return `
+        <article class="item shop-item rarity-${rarity}">
+          <div class="item-visual">
+            <div class="shop-token rarity-${rarity}">${escapeHtml(token)}</div>
+            <div class="item-copy">
+              <div class="item-main">
+                <span class="item-name">${escapeHtml(entry.name || entry.sku)}</span>
+                <span class="price">${entry.price || 0} ${t('priceGold')}</span>
+              </div>
+              <div class="item-sub">${subLine}</div>
+              <div class="item-sub">${escapeHtml(entry.description || '')}</div>
+              <div class="item-actions">
+                <button data-action="system-shop-buy" data-sku="${escapeHtml(entry.sku)}" ${pending || !affordable ? 'disabled' : ''}>${pending ? t('shopBuying') : t('shopBuy')}</button>
+              </div>
+            </div>
+          </div>
+        </article>
+      `
+    })
+    .join('')
+}
+
 function renderInventory(items, force = true) {
   if (state.listingDraftItemId && !items.some((item) => item.id === state.listingDraftItemId)) {
     closeListingPanel()
+  }
+  if (els.recycleAllButton) {
+    els.recycleAllButton.disabled = !items.length || state.recycleAllInFlight
+    els.recycleAllButton.textContent = state.recycleAllInFlight ? t('recycling') : t('recycleAll')
   }
   const signature = inventorySignature(items)
   if (!force && state.inventoryRenderSignature === signature) {
@@ -1688,10 +1825,12 @@ function renderInventory(items, force = true) {
   els.inventoryList.innerHTML = items
     .map((item) => {
       const defaultPrice = Math.max(20, item.score * 2)
+      const pending = state.inventoryActionInFlightIds.has(item.id)
       const actions = `
         <div class="item-actions">
-          <button data-action="equip" data-id="${item.id}">${t('equip')}</button>
-          <button class="muted" data-action="list" data-id="${item.id}" data-price="${defaultPrice}">${t('list')}</button>
+          <button data-action="equip" data-id="${item.id}" ${pending ? 'disabled' : ''}>${t('equip')}</button>
+          <button class="muted" data-action="list" data-id="${item.id}" data-price="${defaultPrice}" ${pending ? 'disabled' : ''}>${t('list')}</button>
+          <button class="muted" data-action="recycle" data-id="${item.id}" ${pending ? 'disabled' : ''}>${pending ? t('recycling') : t('recycle')}</button>
         </div>
       `
       return itemHtml(item, actions)
@@ -1715,7 +1854,10 @@ function renderMarket(listings, heroId, force = true) {
       const own = listing.seller_id === heroId
       const pending = state.marketActionInFlightIds.has(listing.id)
       const actionButton = own
-        ? `<button class="muted" data-action="cancel-listing" data-id="${listing.id}" ${pending ? 'disabled' : ''}>${pending ? t('cancelingListing') : t('cancelListing')}</button>`
+        ? `
+          <button class="muted" data-action="cancel-listing" data-id="${listing.id}" ${pending ? 'disabled' : ''}>${pending ? t('cancelingListing') : t('cancelListing')}</button>
+          <button data-action="sell-to-system" data-id="${listing.id}" ${pending ? 'disabled' : ''}>${pending ? t('sellingSystem') : t('sellSystem')} (${item.score})</button>
+        `
         : `<button data-action="buy" data-id="${listing.id}" ${pending ? 'disabled' : ''}>${pending ? t('buying') : t('buy')}</button>`
       return `
         <article class="item rarity-${item.rarity}">
@@ -1925,7 +2067,7 @@ function equipmentAppearance(item) {
     slot: (item && item.slot) || 'weapon',
     model: item && item.slot === 'ring' ? ringPetModel(item) : (item && item.weapon_type) || (item && item.slot) || 'blade',
     palette,
-    aura: item && ['purple', 'gold', 'red'].includes(item.rarity),
+    aura: item && ['purple', 'gold', 'red', 'rainbow'].includes(item.rarity),
     icon_shape: item && item.slot === 'ring' ? 'pet' : 'slash'
   }
 }
@@ -1941,7 +2083,8 @@ function ringPetModel(item, appearance = {}) {
     blue: 'moon_cat_pet',
     purple: 'star_bunny_pet',
     gold: 'spark_fox_pet',
-    red: 'ember_fox_pet'
+    red: 'ember_fox_pet',
+    rainbow: 'ember_fox_pet'
   }[(item && item.rarity) || 'white'] || 'sprout_pet'
 }
 
@@ -3040,7 +3183,8 @@ function attackEffectProfile(rarity) {
       blue: 12,
       purple: 18,
       gold: 24,
-      red: 34
+      red: 34,
+      rainbow: 44
     }[rarity] || 6,
     trails: {
       white: 1,
@@ -3048,7 +3192,8 @@ function attackEffectProfile(rarity) {
       blue: 2,
       purple: 3,
       gold: 4,
-      red: 5
+      red: 5,
+      rainbow: 6
     }[rarity] || 1,
     width: {
       white: 4,
@@ -3056,7 +3201,8 @@ function attackEffectProfile(rarity) {
       blue: 6,
       purple: 7,
       gold: 8,
-      red: 10
+      red: 10,
+      rainbow: 12
     }[rarity] || 4
   }
 }
@@ -3110,7 +3256,7 @@ function drawWeaponRarityBurst(startX, y, reach, progress, profile, effect) {
     ctx.beginPath()
     ctx.arc(x, particleY, 1.6 + pseudoRandom(seed + 11) * 2.8, 0, Math.PI * 2)
     ctx.fill()
-    if (['purple', 'gold', 'red'].includes(effect.rarity) && i % 5 === 0) {
+    if (['purple', 'gold', 'red', 'rainbow'].includes(effect.rarity) && i % 5 === 0) {
       ctx.strokeStyle = palette.glow
       ctx.lineWidth = 1.2
       ctx.strokeRect(x - 3, particleY - 3, 6, 6)
@@ -3593,6 +3739,7 @@ function drawTalentAura(skeleton, entity) {
   if (!style) {
     return
   }
+  drawPixellabTalentAura(skeleton, style)
   if (style.kind === 'lightning') {
     drawLightningAura(skeleton, style)
     return
@@ -3607,9 +3754,28 @@ function drawTalentAura(skeleton, entity) {
 function talentAuraStyle(entity) {
   const effects = entity.talent_effects || {}
   const names = (entity.talents || []).map((talent) => talent.name || '').join('')
+  if (effects.all_stats_pct || names.includes('龙')) {
+    return {
+      kind: 'dragon',
+      assetKey: 'talentDragonEffect',
+      color: '#ffca55',
+      secondary: '#ff78e6',
+      strength: Math.min(1.42, 0.78 + Number(effects.all_stats_pct || 0) * 4.2)
+    }
+  }
+  if (effects.attack_pct || names.includes('火')) {
+    return {
+      kind: 'flame',
+      assetKey: 'talentFlameEffect',
+      color: '#ff7a7c',
+      secondary: '#ffca55',
+      strength: Math.min(1.36, 0.74 + Number(effects.attack_pct || 0) * 3.2)
+    }
+  }
   if (effects.move_speed_pct || names.includes('雷') || names.includes('疾风')) {
     return {
       kind: 'lightning',
+      assetKey: 'talentLightningEffect',
       color: '#68b7ff',
       secondary: '#ffca55',
       strength: Math.min(1.4, 0.72 + Number(effects.move_speed_pct || 0) * 3)
@@ -3618,6 +3784,7 @@ function talentAuraStyle(entity) {
   if (effects.defense_pct || effects.max_hp_pct) {
     return {
       kind: 'ward',
+      assetKey: 'talentFlameEffect',
       color: '#5fd18b',
       secondary: '#68b7ff',
       strength: Math.min(1.25, 0.66 + Number((effects.defense_pct || 0) + (effects.max_hp_pct || 0)) * 2)
@@ -3626,6 +3793,7 @@ function talentAuraStyle(entity) {
   if (effects.attack_pct || effects.all_stats_pct) {
     return {
       kind: 'mote',
+      assetKey: 'talentDragonEffect',
       color: '#ff7a7c',
       secondary: '#ffca55',
       strength: Math.min(1.25, 0.7 + Number((effects.attack_pct || 0) + (effects.all_stats_pct || 0)) * 2.5)
@@ -3634,12 +3802,34 @@ function talentAuraStyle(entity) {
   if (effects.drop_rate_pct || effects.gold_pct || effects.exp_pct || effects.rift_drop_rate_pct) {
     return {
       kind: 'mote',
+      assetKey: 'talentDragonEffect',
       color: '#ffca55',
       secondary: '#b779ff',
       strength: 0.78
     }
   }
   return null
+}
+
+function drawPixellabTalentAura(skeleton, style) {
+  const image = style.assetKey ? assetImages[style.assetKey] : null
+  if (!image || !image.complete || image.naturalWidth <= 0) {
+    return false
+  }
+  const now = state.lastRenderAt || 0
+  const pulse = 0.5 + animationPhase(style.kind === 'lightning' ? 460 : 720) * 0.5
+  const size = (style.kind === 'dragon' ? 122 : 108) * style.strength * (0.96 + pulse * 0.08)
+  const yOffset = style.kind === 'dragon' ? 2 : 4
+  const spin = style.kind === 'lightning'
+    ? Math.sin(now / 220) * 0.16
+    : (now / (style.kind === 'flame' ? 1700 : 2300)) * (style.kind === 'dragon' ? -1 : 1)
+  ctx.save()
+  ctx.translate(skeleton.torso.x, skeleton.torso.y + yOffset)
+  ctx.rotate(spin)
+  ctx.globalAlpha = style.kind === 'dragon' ? 0.58 : 0.48
+  ctx.drawImage(image, -size / 2, -size / 2, size, size)
+  ctx.restore()
+  return true
 }
 
 function drawLightningAura(skeleton, style) {
@@ -3862,7 +4052,7 @@ function drawEquippedWings(skeleton, armor) {
   const wingWidth = 188 * rareScale
   const wingHeight = 126 * rareScale
   if (drawWingEquipmentSprite(appearance, anchor, wingWidth, wingHeight, rareScale, 0.82 + pulse * 0.1)) {
-    if (['purple', 'gold', 'red'].includes(armor.rarity)) {
+    if (['purple', 'gold', 'red', 'rainbow'].includes(armor.rarity)) {
       drawWingSparks(anchor, palette, armor.rarity, spread)
     }
     return
@@ -3908,7 +4098,7 @@ function drawEquippedWings(skeleton, armor) {
       ctx.stroke()
     }
   })
-  if (['purple', 'gold', 'red'].includes(armor.rarity)) {
+  if (['purple', 'gold', 'red', 'rainbow'].includes(armor.rarity)) {
     drawWingSparks(anchor, palette, armor.rarity, spread)
   }
   ctx.restore()
@@ -3950,7 +4140,7 @@ function drawEquippedHalo(skeleton, helmet) {
   ctx.beginPath()
   ctx.ellipse(anchor.x, anchor.y + 1.5, radiusX * 0.72, radiusY * 0.62, -0.08, 0, Math.PI * 2)
   ctx.stroke()
-  if (appearance.model === 'crown_helm' || ['gold', 'red'].includes(helmet.rarity)) {
+  if (appearance.model === 'crown_helm' || ['gold', 'red', 'rainbow'].includes(helmet.rarity)) {
     ctx.globalAlpha = 0.78
     ctx.fillStyle = palette.glow
     for (let i = -2; i <= 2; i += 1) {
@@ -3974,7 +4164,7 @@ function drawEquippedFootCircle(skeleton, boots) {
   const radiusX = boots.rarity === 'red' ? 34 : boots.rarity === 'gold' ? 30 : 25
   const radiusY = boots.rarity === 'red' ? 9 : 7
   const now = state.lastRenderAt || 0
-  const auraSpin = now / (boots.rarity === 'red' || boots.rarity === 'gold' ? 980 : 1220)
+  const auraSpin = now / (boots.rarity === 'rainbow' ? 760 : boots.rarity === 'red' || boots.rarity === 'gold' ? 980 : 1220)
   const auraWidth = radiusX * 3.7
   const auraHeight = Math.max(58, radiusY * 7.2)
   const auraPulse = 0.98 + pulse * 0.08
@@ -4122,7 +4312,7 @@ function drawRingPet(skeleton, ring) {
     scaleX: 1 + petSquash,
     scaleY: 1 - petSquash * 0.7
   })) {
-    if (['purple', 'gold', 'red'].includes(ring.rarity)) {
+    if (['purple', 'gold', 'red', 'rainbow'].includes(ring.rarity)) {
       const palette = appearance.palette || FALLBACK_GEAR_PALETTES.white
       drawPetSparkles(anchor, palette, ring.rarity, 0.5 + animationPhase(580) * 0.5)
     }
@@ -4202,7 +4392,7 @@ function drawPetBody(anchor, appearance, ring) {
   ctx.arc(anchor.x + 1, anchor.y + 4 * scale, 3 * scale, 0.1, Math.PI - 0.1)
   ctx.stroke()
 
-  if (['purple', 'gold', 'red'].includes(rarity)) {
+  if (['purple', 'gold', 'red', 'rainbow'].includes(rarity)) {
     drawPetSparkles(anchor, palette, rarity, pulse)
   }
   ctx.restore()
@@ -4219,7 +4409,7 @@ function roundPetEar(x, y, width, height, rotation) {
 }
 
 function drawPetSparkles(anchor, palette, rarity, pulse) {
-  const count = rarity === 'red' ? 6 : rarity === 'gold' ? 5 : 4
+  const count = rarity === 'rainbow' ? 8 : rarity === 'red' ? 6 : rarity === 'gold' ? 5 : 4
   const now = state.lastRenderAt || 0
   for (let i = 0; i < count; i += 1) {
     const angle = now / (420 + i * 24) + i * 1.8
@@ -4265,7 +4455,7 @@ function drawEquippedParticleEffects(skeleton, entity) {
       return
     }
     const appearance = equipmentAppearance(item)
-    if (!appearance.aura && !['purple', 'gold', 'red'].includes(item.rarity)) {
+    if (!appearance.aura && !['purple', 'gold', 'red', 'rainbow'].includes(item.rarity)) {
       return
     }
     drawRarityParticle(anchors[slot] || skeleton.torso, item, slot)
@@ -4948,13 +5138,50 @@ els.inventoryList.addEventListener('click', (event) => {
   const itemId = button.dataset.id
   if (action === 'equip') {
     postAction('/equip-item', { item_id: itemId }, '已穿戴')
+    return
   }
   if (action === 'list') {
     const item = ((state.snapshot && state.snapshot.hero && state.snapshot.hero.inventory) || [])
       .find((candidate) => candidate.id === itemId)
     openListingPanel(item)
+    return
+  }
+  if (action === 'recycle') {
+    if (state.inventoryActionInFlightIds.has(itemId)) {
+      return
+    }
+    state.inventoryActionInFlightIds.add(itemId)
+    if (state.snapshot && state.snapshot.hero) {
+      renderInventory(state.snapshot.hero.inventory || [], true)
+    }
+    postAction('/inventory/recycle', { item_id: itemId }, t('recycle'))
+      .finally(() => {
+        state.inventoryActionInFlightIds.delete(itemId)
+        if (state.snapshot && state.snapshot.hero) {
+          renderInventory(state.snapshot.hero.inventory || [], true)
+        }
+      })
   }
 })
+
+if (els.recycleAllButton) {
+  els.recycleAllButton.addEventListener('click', () => {
+    if (state.recycleAllInFlight) {
+      return
+    }
+    state.recycleAllInFlight = true
+    if (state.snapshot && state.snapshot.hero) {
+      renderInventory(state.snapshot.hero.inventory || [], true)
+    }
+    postAction('/inventory/recycle-all', {}, t('recycleAll'))
+      .finally(() => {
+        state.recycleAllInFlight = false
+        if (state.snapshot && state.snapshot.hero) {
+          renderInventory(state.snapshot.hero.inventory || [], true)
+        }
+      })
+  })
+}
 
 els.listingCancelButton.addEventListener('click', () => {
   closeListingPanel()
@@ -4980,12 +5207,43 @@ els.listingPriceInput.addEventListener('keydown', (event) => {
 })
 
 els.talentList.addEventListener('click', (event) => {
-  const button = event.target.closest('button[data-action="evolve-talent"]')
+  const button = event.target.closest('button[data-action]')
   if (!button || button.disabled || state.talentEvolutionInFlight) {
     return
   }
-  evolveTalent(button)
+  if (button.dataset.action === 'evolve-talent') {
+    evolveTalent(button)
+  }
+  if (button.dataset.action === 'expand-talent') {
+    expandTalentWithDonations(button)
+  }
 })
+
+if (els.systemShopList) {
+  els.systemShopList.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-action="system-shop-buy"]')
+    if (!button || button.disabled) {
+      return
+    }
+    const sku = button.dataset.sku
+    if (state.systemShopActionInFlightSkus.has(sku)) {
+      return
+    }
+    state.systemShopActionInFlightSkus.add(sku)
+    if (state.snapshot) {
+      const heroGold = state.snapshot.hero ? state.snapshot.hero.gold || 0 : 0
+      renderSystemShop((state.snapshot.system_shop && state.snapshot.system_shop.items) || [], heroGold, true)
+    }
+    postAction('/system-shop/buy', { sku }, t('shopBuy'))
+      .finally(() => {
+        state.systemShopActionInFlightSkus.delete(sku)
+        if (state.snapshot) {
+          const heroGold = state.snapshot.hero ? state.snapshot.hero.gold || 0 : 0
+          renderSystemShop((state.snapshot.system_shop && state.snapshot.system_shop.items) || [], heroGold, true)
+        }
+      })
+  })
+}
 
 els.marketList.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-action]')
@@ -4993,7 +5251,7 @@ els.marketList.addEventListener('click', (event) => {
     return
   }
   const action = button.dataset.action
-  if (!['buy', 'cancel-listing'].includes(action)) {
+  if (!['buy', 'cancel-listing', 'sell-to-system'].includes(action)) {
     return
   }
   const listingId = button.dataset.id
@@ -5004,9 +5262,21 @@ els.marketList.addEventListener('click', (event) => {
   if (state.snapshot && state.snapshot.market && state.snapshot.hero) {
     renderMarket(state.snapshot.market.active || [], state.snapshot.hero.id, true)
   }
-  const path = action === 'cancel-listing' ? '/market/cancel' : '/market/buy'
-  const busyText = action === 'cancel-listing' ? t('cancelingListing') : t('buying')
-  const doneText = action === 'cancel-listing' ? t('cancelListing') : t('buy')
+  const path = action === 'cancel-listing'
+    ? '/market/cancel'
+    : action === 'sell-to-system'
+      ? '/market/sell-to-system'
+      : '/market/buy'
+  const busyText = action === 'cancel-listing'
+    ? t('cancelingListing')
+    : action === 'sell-to-system'
+      ? t('sellingSystem')
+      : t('buying')
+  const doneText = action === 'cancel-listing'
+    ? t('cancelListing')
+    : action === 'sell-to-system'
+      ? t('sellSystem')
+      : t('buy')
   setStatus(busyText)
   postAction(path, { listing_id: listingId }, doneText)
     .finally(() => {

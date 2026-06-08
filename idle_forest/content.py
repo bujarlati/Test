@@ -52,6 +52,7 @@ SPECIAL_RARITY_WEIGHTS: dict[Rarity, int] = {
     Rarity.PURPLE: 360,
     Rarity.GOLD: 85,
     Rarity.RED: 5,
+    Rarity.RAINBOW: 0,
 }
 
 SPECIAL_SET_DEFS: tuple[dict[str, str], ...] = (
@@ -98,6 +99,24 @@ RARITY_NAME_PREFIX: dict[Rarity, tuple[str, ...]] = {
     Rarity.PURPLE: ("Elder", "Spirit", "Twilight"),
     Rarity.GOLD: ("Sunforged", "Royal", "Ancient"),
     Rarity.RED: ("Mythic", "Dragonbone", "Worldroot"),
+    Rarity.RAINBOW: ("Prismatic", "Celestial", "Chromaforge"),
+}
+
+SYSTEM_SHOP_DONATION_SKU = "donation"
+SYSTEM_SHOP_DONATION_COST = 2500
+SYSTEM_SHOP_RAINBOW_COSTS: dict[str, int] = {
+    "rainbow_weapon": 120000,
+    "rainbow_helmet": 90000,
+    "rainbow_armor": 110000,
+    "rainbow_boots": 85000,
+    "rainbow_ring": 95000,
+}
+SYSTEM_SHOP_RAINBOW_SLOTS: dict[str, EquipmentSlot] = {
+    "rainbow_weapon": EquipmentSlot.WEAPON,
+    "rainbow_helmet": EquipmentSlot.HELMET,
+    "rainbow_armor": EquipmentSlot.ARMOR,
+    "rainbow_boots": EquipmentSlot.BOOTS,
+    "rainbow_ring": EquipmentSlot.RING,
 }
 
 
@@ -350,6 +369,115 @@ def generate_special_set_equipment(
         set_id=set_def["id"],
         set_name=set_def["name"],
         set_piece=piece,
+        set_bonus=set_bonus,
+    )
+
+
+def system_shop_catalog(hero_level: int = 1) -> list[dict[str, object]]:
+    item_level = max(20, hero_level + RARITY_CONFIG[Rarity.RAINBOW].min_level_bonus + 8)
+    catalog: list[dict[str, object]] = [
+        {
+            "sku": SYSTEM_SHOP_DONATION_SKU,
+            "name": "Donation Sigil",
+            "kind": "donation",
+            "price": SYSTEM_SHOP_DONATION_COST,
+            "description": "A rare offering. Five can unlock another talent after every current talent becomes mythic.",
+        }
+    ]
+    slot_names = {
+        EquipmentSlot.WEAPON: "Prismatic Blade",
+        EquipmentSlot.HELMET: "Celestial Halo",
+        EquipmentSlot.ARMOR: "Chromaforge Mantle",
+        EquipmentSlot.BOOTS: "Astral Ground Aura",
+        EquipmentSlot.RING: "Dragonlight Familiar",
+    }
+    for sku, slot in SYSTEM_SHOP_RAINBOW_SLOTS.items():
+        catalog.append(
+            {
+                "sku": sku,
+                "name": f"{slot_names[slot]} Lv.{item_level}",
+                "kind": "equipment",
+                "slot": slot.value,
+                "rarity": Rarity.RAINBOW.value,
+                "level": item_level,
+                "price": SYSTEM_SHOP_RAINBOW_COSTS[sku],
+                "description": "System-only rainbow equipment with stronger stats and brighter effects than red gear.",
+            }
+        )
+    return catalog
+
+
+def generate_system_shop_equipment(
+    sku: str,
+    hero_level: int,
+    rng: random.Random,
+    owner_id: str | None = None,
+) -> Equipment:
+    if sku not in SYSTEM_SHOP_RAINBOW_SLOTS:
+        raise KeyError(f"unknown system shop equipment sku: {sku}")
+
+    slot = SYSTEM_SHOP_RAINBOW_SLOTS[sku]
+    config = RARITY_CONFIG[Rarity.RAINBOW]
+    item_level = max(20, hero_level + config.min_level_bonus + 8)
+    multiplier = config.power_multiplier * 1.45
+    base = max(1, item_level)
+
+    attack = defense = max_hp = 0
+    attack_speed = hp_regen = attack_range = 0.0
+    weapon_type = None
+    if slot == EquipmentSlot.WEAPON:
+        attack = int((9 + base * 2.7) * multiplier)
+        weapon_type = rng.choice(("blade", "spear"))
+        attack_range = {"blade": 8.0, "spear": 24.0}[weapon_type]
+        attack_speed = {"blade": 0.14, "spear": 0.04}[weapon_type]
+    elif slot == EquipmentSlot.HELMET:
+        defense = int((4 + base * 1.35) * multiplier)
+        max_hp = int((10 + base * 2.6) * multiplier)
+    elif slot == EquipmentSlot.ARMOR:
+        defense = int((7 + base * 2.35) * multiplier)
+        max_hp = int((18 + base * 3.9) * multiplier)
+    elif slot == EquipmentSlot.BOOTS:
+        defense = int((3 + base * 1.2) * multiplier)
+        max_hp = int((8 + base * 2.0) * multiplier)
+        hp_regen = round(0.24 * multiplier, 2)
+    elif slot == EquipmentSlot.RING:
+        attack = int((3 + base * 1.55) * multiplier)
+        max_hp = int((12 + base * 2.6) * multiplier)
+        attack_speed = round(0.05 * multiplier, 2)
+
+    slot_names = {
+        EquipmentSlot.WEAPON: ("Prismatic Blade", "Radiant Edge"),
+        EquipmentSlot.HELMET: ("Celestial Halo", "Aurora Crown"),
+        EquipmentSlot.ARMOR: ("Chromaforge Mantle", "Dragonlight Mail"),
+        EquipmentSlot.BOOTS: ("Astral Ground Aura", "Starwake Field"),
+        EquipmentSlot.RING: ("Dragonlight Familiar", "Prismatic Companion"),
+    }
+    set_bonus = {
+        "name": "Rainbow Ascension",
+        "pieces_required": 2,
+        "attack": int((8 + base) * config.power_multiplier),
+        "defense": int((5 + base * 0.7) * config.power_multiplier),
+        "max_hp": int((22 + base * 2.6) * config.power_multiplier),
+    }
+    return Equipment(
+        id=f"item_{uuid4().hex[:12]}",
+        name=f"{rng.choice(slot_names[slot])} Lv.{item_level}",
+        slot=slot,
+        rarity=Rarity.RAINBOW,
+        level=item_level,
+        attack=attack,
+        defense=defense,
+        max_hp=max_hp,
+        attack_speed=attack_speed,
+        hp_regen=hp_regen,
+        attack_range=attack_range,
+        weapon_type=weapon_type,
+        owner_id=owner_id,
+        tradable=True,
+        special=True,
+        set_id="rainbow_ascension",
+        set_name="Rainbow Ascension",
+        set_piece=SPECIAL_SLOT_PIECES[slot],
         set_bonus=set_bonus,
     )
 

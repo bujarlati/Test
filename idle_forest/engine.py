@@ -32,6 +32,9 @@ from .config import (
 )
 from .content import (
     RIFT_THEMES,
+    SYSTEM_SHOP_DONATION_COST,
+    SYSTEM_SHOP_DONATION_SKU,
+    SYSTEM_SHOP_RAINBOW_COSTS,
     create_decoration,
     create_monster,
     create_rift_decoration,
@@ -40,10 +43,12 @@ from .content import (
     create_treasure_mimic,
     generate_equipment,
     generate_special_set_equipment,
+    generate_system_shop_equipment,
     maybe_drop_equipment,
+    system_shop_catalog,
 )
 from .market import Market, MarketListing
-from .models import Equipment, EquipmentSlot, Event, Hero, Monster, Rarity, RiftRun, Talent
+from .models import Equipment, EquipmentSlot, Event, Hero, Monster, Rarity, RiftRun, Talent, TalentTier
 from .talents import (
     TALENT_CATALOG,
     TALENT_TIER_CONFIG,
@@ -323,6 +328,118 @@ class GameEngine:
         )
         return item
 
+    def buy_system_shop_item(self, sku: str) -> dict[str, Any]:
+        if sku == SYSTEM_SHOP_DONATION_SKU:
+            if self.hero.gold < SYSTEM_SHOP_DONATION_COST:
+                raise ValueError("not enough gold")
+            self.hero.gold -= SYSTEM_SHOP_DONATION_COST
+            self.hero.donations += 1
+            self._add_event(
+                "system_shop_buy",
+                "Bought a donation sigil.",
+                sku=sku,
+                price=SYSTEM_SHOP_DONATION_COST,
+                donations=self.hero.donations,
+            )
+            return {
+                "purchase": {
+                    "sku": sku,
+                    "kind": "donation",
+                    "price": SYSTEM_SHOP_DONATION_COST,
+                    "donations": self.hero.donations,
+                }
+            }
+
+        if sku not in SYSTEM_SHOP_RAINBOW_COSTS:
+            raise KeyError(f"unknown system shop sku: {sku}")
+        price = SYSTEM_SHOP_RAINBOW_COSTS[sku]
+        if self.hero.gold < price:
+            raise ValueError("not enough gold")
+        self.hero.gold -= price
+        item = generate_system_shop_equipment(sku, self.hero.level, self.rng, owner_id=self.hero.id)
+        self.hero.inventory.append(item)
+        self._add_event(
+            "system_shop_buy",
+            f"Bought {item.name}.",
+            sku=sku,
+            item_id=item.id,
+            price=price,
+        )
+        return {"purchase": {"sku": sku, "kind": "equipment", "price": price, "item": item.to_dict()}}
+
+    def recycle_item(self, item_id: str) -> dict[str, Any]:
+        for index, item in enumerate(self.hero.inventory):
+            if item.id != item_id:
+                continue
+            self.hero.inventory.pop(index)
+            value = item.score
+            self.hero.gold += value
+            self._add_event(
+                "equipment_recycle",
+                f"Recycled {item.name} for {value} gold.",
+                item_id=item.id,
+                gold=value,
+            )
+            return {"item": item.to_dict(), "gold": value}
+        raise KeyError(f"item not found in inventory: {item_id}")
+
+    def recycle_all_inventory(self) -> dict[str, Any]:
+        items = list(self.hero.inventory)
+        self.hero.inventory.clear()
+        value = sum(item.score for item in items)
+        self.hero.gold += value
+        self._add_event(
+            "equipment_recycle_all",
+            f"Recycled {len(items)} items for {value} gold.",
+            count=len(items),
+            gold=value,
+        )
+        return {"items": [item.to_dict() for item in items], "count": len(items), "gold": value}
+
+    def sell_own_listing_to_system(self, listing_id: str) -> dict[str, Any]:
+        listing = self.market.get_listing(listing_id)
+        if not listing.active:
+            raise ValueError("listing is not active")
+        if listing.seller_id != self.hero.id:
+            raise PermissionError("cannot sell another player's listing")
+        item = listing.item
+        value = item.score
+        listing.active = False
+        listing.buyer_id = "system_shop"
+        listing.sold_tick = self.tick
+        item.owner_id = "system_shop"
+        self.hero.gold += value
+        self._add_event(
+            "market_sell_system",
+            f"Sold {item.name} to the system for {value} gold.",
+            listing_id=listing_id,
+            item_id=item.id,
+            gold=value,
+        )
+        return {"listing": listing.to_dict(), "item": item.to_dict(), "gold": value}
+
+    def donate_for_talent(self) -> dict[str, Any]:
+        if self.hero.donations < 5:
+            raise ValueError("not enough donations")
+        if not self.hero.talents or any(talent.tier != TalentTier.MYTHIC for talent in self.hero.talents):
+            raise ValueError("all current talents must be mythic")
+
+        owned_ids = {talent.id for talent in self.hero.talents}
+        candidates = [talent for talent in TALENT_CATALOG[TalentTier.MYTHIC] if talent.id not in owned_ids]
+        if not candidates:
+            candidates = list(TALENT_CATALOG[TalentTier.MYTHIC])
+        talent = self.rng.choice(candidates)
+        self.hero.donations -= 5
+        self.hero.talents.append(talent)
+        self._add_event(
+            "talent_expand",
+            f"Unlocked extra talent {talent.name}.",
+            talent_id=talent.id,
+            tier=talent.tier.value,
+            spent=5,
+        )
+        return {"spent": 5, "talent": talent.to_dict(), "donations": self.hero.donations}
+
     def snapshot(self) -> dict[str, Any]:
         camera_x = max(0.0, self.hero.x - 180.0)
         if self.mode == "rift" and self.active_rift is not None:
@@ -420,6 +537,7 @@ class GameEngine:
             "forest": self._forest_snapshot(),
             "treasure": self._treasure_snapshot(),
             "talent": self._talent_snapshot(),
+            "system_shop": self._system_shop_snapshot(),
             "market": self.market.to_dict(),
             "events": [event.to_dict() for event in self.events],
         }
@@ -953,7 +1071,17 @@ class GameEngine:
                 for tier, config in TALENT_TIER_CONFIG.items()
             ],
             "total_catalog_count": sum(len(talents) for talents in TALENT_CATALOG.values()),
+            "donation_cost": 5,
+            "donations": self.hero.donations,
+            "can_expand": self.hero.can_expand_talent_with_donations,
         }
+
+    def _system_shop_snapshot(self) -> dict[str, Any]:
+        items = []
+        for entry in system_shop_catalog(self.hero.level):
+            price = int(entry["price"])
+            items.append(entry | {"affordable": self.hero.gold >= price})
+        return {"items": items}
 
     def _add_event(self, kind: str, message: str, **data: Any) -> None:
         self.events.append(Event(self.tick, kind, message, data))

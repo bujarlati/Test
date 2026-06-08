@@ -23,6 +23,7 @@ RARITY_CONFIG: dict[Rarity, RarityConfig] = {
     Rarity.PURPLE: RarityConfig("Purple", "#9b5cff", 130, 1.85, 1),
     Rarity.GOLD: RarityConfig("Gold", "#ffab00", 18, 2.45, 2),
     Rarity.RED: RarityConfig("Red", "#ff4d4f", 2, 3.30, 3),
+    Rarity.RAINBOW: RarityConfig("Rainbow", "#8effff", 0, 4.65, 5),
 }
 
 RARITY_ORDER: tuple[Rarity, ...] = (
@@ -32,6 +33,7 @@ RARITY_ORDER: tuple[Rarity, ...] = (
     Rarity.PURPLE,
     Rarity.GOLD,
     Rarity.RED,
+    Rarity.RAINBOW,
 )
 
 HERO_START_X = 0.0

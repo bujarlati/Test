@@ -97,6 +97,7 @@ def hero_to_save(hero: Hero) -> dict[str, Any]:
         "y": hero.y,
         "speed": hero.speed,
         "talent_scrolls": hero.talent_scrolls,
+        "donations": hero.donations,
         "talents": [talent.to_dict() for talent in hero.talents],
         "inventory": [equipment_to_save(item) for item in hero.inventory],
         "equipped": {slot.value: equipment_to_save(item) for slot, item in hero.equipped.items()},
@@ -122,6 +123,7 @@ def hero_from_save(data: dict[str, Any]) -> Hero:
         y=float(data.get("y", 220.0)),
         speed=float(data.get("speed", 38.0)),
         talent_scrolls=int(data.get("talent_scrolls", 0)),
+        donations=int(data.get("donations", 0)),
     )
     hero.talents = [talent_from_save(talent) for talent in data.get("talents", [])]
     hero.inventory = [equipment_from_save(item) for item in data.get("inventory", [])]

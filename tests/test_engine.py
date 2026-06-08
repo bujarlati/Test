@@ -15,7 +15,7 @@ from idle_forest.config import (
     MONSTER_APPROACH_DISTANCE,
     TREASURE_MIMIC_PITY_THRESHOLD,
 )
-from idle_forest.content import create_treasure_mimic, generate_equipment, generate_special_set_equipment
+from idle_forest.content import create_treasure_mimic, generate_equipment, generate_special_set_equipment, system_shop_catalog
 from idle_forest.models import Equipment, EquipmentSlot, Monster, Rarity, TalentTier
 from idle_forest.talents import TALENT_CATALOG
 
@@ -57,7 +57,7 @@ class GameEngineTests(unittest.TestCase):
         self.assertEqual(hero_entity["talent_effects"], snapshot["hero"]["talent_effects"])
 
     def test_system_shop_sells_rainbow_equipment_stronger_than_red(self) -> None:
-        engine = GameEngine(seed=201, starter_gold=250000)
+        engine = GameEngine(seed=201, starter_gold=2500000)
         red = generate_special_set_equipment(20, engine.rng, rarity=Rarity.RED)
 
         result = engine.buy_system_shop_item("rainbow_weapon")
@@ -66,8 +66,18 @@ class GameEngineTests(unittest.TestCase):
         self.assertEqual(bought["rarity"], "rainbow")
         self.assertEqual(bought["slot"], "weapon")
         self.assertGreater(bought["score"], red.score)
-        self.assertLess(engine.hero.gold, 250000)
+        self.assertLess(engine.hero.gold, 2500000)
         self.assertIn(bought["id"], [item.id for item in engine.hero.inventory])
+
+    def test_system_shop_prices_are_late_game_gold_sinks(self) -> None:
+        catalog = {entry["sku"]: entry for entry in system_shop_catalog(hero_level=20)}
+
+        self.assertEqual(catalog["donation"]["price"], 25000)
+        self.assertEqual(catalog["rainbow_weapon"]["price"], 1200000)
+        self.assertEqual(catalog["rainbow_helmet"]["price"], 900000)
+        self.assertEqual(catalog["rainbow_armor"]["price"], 1100000)
+        self.assertEqual(catalog["rainbow_boots"]["price"], 850000)
+        self.assertEqual(catalog["rainbow_ring"]["price"], 950000)
 
     def test_system_shop_purchase_fails_without_enough_gold(self) -> None:
         engine = GameEngine(seed=206, starter_gold=1)

@@ -68,7 +68,7 @@ const MONSTER_SPAWN_SCREEN_BUFFER = 820
 const COMBAT_VISUAL_RANGE_GRACE = 16
 const LOOT_FLOAT_DURATION_MS = 2400
 const ATTACK_EFFECT_DURATION_MS = 520
-const PIXEL_ASSET_VERSION = 'assassin-v54'
+const PIXEL_ASSET_VERSION = 'assassin-v55'
 const DEFAULT_SETTINGS = {
   paused: false,
   volume: 0.7,
@@ -264,6 +264,69 @@ const UI_TEXT = {
   }
 }
 
+const SYSTEM_SHOP_TRANSLATIONS = {
+  donation: {
+    'zh-CN': {
+      name: '\u6350\u8d60\u5370\u8bb0',
+      description: '\u7a00\u6709\u4f9b\u5949\u5370\u8bb0\u3002\u5f53\u5f53\u524d\u6240\u6709\u5929\u8d4b\u90fd\u8fbe\u5230\u7edd\u4e16\u540e\uff0c\u6d88\u8017 5 \u4e2a\u53ef\u89e3\u9501\u4e00\u4e2a\u65b0\u7684\u666e\u901a\u5929\u8d4b\u3002'
+    },
+    'en-US': {
+      name: 'Donation Sigil',
+      description: 'A rare offering. Five can unlock one new common talent after every current talent becomes mythic.'
+    }
+  },
+  rainbow_weapon: {
+    'zh-CN': {
+      name: '\u68f1\u5f69\u5229\u5203',
+      description: '\u7cfb\u7edf\u4e13\u5c5e\u5f69\u8272\u6b66\u5668\uff0c\u6bd4\u7ea2\u88c5\u66f4\u5f3a\uff0c\u5e76\u5e26\u6709\u66f4\u8000\u773c\u7684\u88c5\u5907\u7279\u6548\u3002'
+    },
+    'en-US': {
+      name: 'Prismatic Blade',
+      description: 'System-only rainbow weapon, stronger than red gear and wrapped in brighter equipment effects.'
+    }
+  },
+  rainbow_helmet: {
+    'zh-CN': {
+      name: '\u5929\u7a79\u5149\u73af',
+      description: '\u7cfb\u7edf\u4e13\u5c5e\u5f69\u8272\u5934\u9876\u5149\u73af\uff0c\u6bd4\u7ea2\u88c5\u66f4\u5f3a\uff0c\u5e76\u5e26\u6709\u66f4\u8000\u773c\u7684\u88c5\u5907\u7279\u6548\u3002'
+    },
+    'en-US': {
+      name: 'Celestial Halo',
+      description: 'System-only rainbow head halo, stronger than red gear and wrapped in brighter equipment effects.'
+    }
+  },
+  rainbow_armor: {
+    'zh-CN': {
+      name: '\u5f69\u953b\u7ffc\u5e55',
+      description: '\u7cfb\u7edf\u4e13\u5c5e\u5f69\u8272\u7ffc\u5e55\uff0c\u6bd4\u7ea2\u88c5\u66f4\u5f3a\uff0c\u5e76\u5e26\u6709\u66f4\u8000\u773c\u7684\u88c5\u5907\u7279\u6548\u3002'
+    },
+    'en-US': {
+      name: 'Chromaforge Mantle',
+      description: 'System-only rainbow wing mantle, stronger than red gear and wrapped in brighter equipment effects.'
+    }
+  },
+  rainbow_boots: {
+    'zh-CN': {
+      name: '\u661f\u754c\u811a\u5e95\u6c14\u573a',
+      description: '\u7cfb\u7edf\u4e13\u5c5e\u5f69\u8272\u811a\u5e95\u6c14\u573a\uff0c\u6bd4\u7ea2\u88c5\u66f4\u5f3a\uff0c\u5e76\u5e26\u6709\u66f4\u8000\u773c\u7684\u88c5\u5907\u7279\u6548\u3002'
+    },
+    'en-US': {
+      name: 'Astral Ground Aura',
+      description: 'System-only rainbow ground aura, stronger than red gear and wrapped in brighter equipment effects.'
+    }
+  },
+  rainbow_ring: {
+    'zh-CN': {
+      name: '\u9f99\u5149\u7075\u5ba0',
+      description: '\u7cfb\u7edf\u4e13\u5c5e\u5f69\u8272\u7075\u5ba0\uff0c\u6bd4\u7ea2\u88c5\u66f4\u5f3a\uff0c\u5e76\u5e26\u6709\u66f4\u8000\u773c\u7684\u88c5\u5907\u7279\u6548\u3002'
+    },
+    'en-US': {
+      name: 'Dragonlight Familiar',
+      description: 'System-only rainbow familiar, stronger than red gear and wrapped in brighter equipment effects.'
+    }
+  }
+}
+
 const state = {
   snapshot: null,
   previousSnapshot: null,
@@ -374,7 +437,15 @@ const ASSET_PATHS = {
   equipmentEmberFoxPet: `/web/assets/pixel/v1/equipment/ember_fox_pet.png?v=${PIXEL_ASSET_VERSION}`,
   talentLightningEffect: `/web/assets/pixel/v1/effects/talent_lightning.png?v=${PIXEL_ASSET_VERSION}`,
   talentFlameEffect: `/web/assets/pixel/v1/effects/talent_flame.png?v=${PIXEL_ASSET_VERSION}`,
-  talentDragonEffect: `/web/assets/pixel/v1/effects/talent_dragon.png?v=${PIXEL_ASSET_VERSION}`
+  talentDragonEffect: `/web/assets/pixel/v1/effects/talent_dragon.png?v=${PIXEL_ASSET_VERSION}`,
+  talentWardEffect: `/web/assets/pixel/v1/effects/talent_ward.png?v=${PIXEL_ASSET_VERSION}`,
+  talentVigorEffect: `/web/assets/pixel/v1/effects/talent_vigor.png?v=${PIXEL_ASSET_VERSION}`,
+  talentTreasureEffect: `/web/assets/pixel/v1/effects/talent_treasure.png?v=${PIXEL_ASSET_VERSION}`,
+  talentGoldEffect: `/web/assets/pixel/v1/effects/talent_gold.png?v=${PIXEL_ASSET_VERSION}`,
+  talentExpEffect: `/web/assets/pixel/v1/effects/talent_exp.png?v=${PIXEL_ASSET_VERSION}`,
+  talentMimicEffect: `/web/assets/pixel/v1/effects/talent_mimic.png?v=${PIXEL_ASSET_VERSION}`,
+  talentRiftEffect: `/web/assets/pixel/v1/effects/talent_rift.png?v=${PIXEL_ASSET_VERSION}`,
+  equipmentEnchantEffect: `/web/assets/pixel/v1/effects/equipment_enchant.png?v=${PIXEL_ASSET_VERSION}`
 }
 
 const EQUIPMENT_MODEL_ASSET_KEYS = {
@@ -1800,6 +1871,29 @@ function systemShopPreviewItem(entry) {
   }
 }
 
+function systemShopTranslation(entry) {
+  const sku = entry && entry.sku
+  const translation = SYSTEM_SHOP_TRANSLATIONS[sku]
+  if (!translation) {
+    return null
+  }
+  return translation[currentLanguage()] || translation['zh-CN'] || translation['en-US'] || null
+}
+
+function systemShopDisplayName(entry) {
+  const translation = systemShopTranslation(entry)
+  const baseName = (translation && translation.name) || entry.name || entry.sku
+  if (entry.kind === 'equipment' && entry.level) {
+    return `${baseName} Lv.${entry.level}`
+  }
+  return baseName
+}
+
+function systemShopDescription(entry) {
+  const translation = systemShopTranslation(entry)
+  return (translation && translation.description) || entry.description || ''
+}
+
 function renderSystemShop(items, heroGold, force = true) {
   if (!els.systemShopList) {
     return
@@ -1827,11 +1921,11 @@ function renderSystemShop(items, heroGold, force = true) {
             ${systemShopPreviewHtml(entry)}
             <div class="item-copy">
               <div class="item-main">
-                <span class="item-name">${escapeHtml(entry.name || entry.sku)}</span>
+                <span class="item-name">${escapeHtml(systemShopDisplayName(entry))}</span>
                 <span class="price">${entry.price || 0} ${t('priceGold')}</span>
               </div>
               <div class="item-sub">${subLine}</div>
-              <div class="item-sub">${escapeHtml(entry.description || '')}</div>
+              <div class="item-sub">${escapeHtml(systemShopDescription(entry))}</div>
               <div class="item-actions">
                 <button data-action="system-shop-buy" data-sku="${escapeHtml(entry.sku)}" ${pending || !affordable ? 'disabled' : ''}>${pending ? t('shopBuying') : t('shopBuy')}</button>
               </div>
@@ -2246,7 +2340,8 @@ function rarityLabel(rarity) {
       blue: 'Blue',
       purple: 'Purple',
       gold: 'Gold',
-      red: 'Red'
+      red: 'Red',
+      rainbow: 'Rainbow'
     }[rarity] || rarity
   }
   return RARITY_LABELS[rarity] || rarity
@@ -3824,31 +3919,79 @@ function talentAuraStyles(entity) {
 
 function talentStyleForEffect(key, value = 0) {
   const amount = Number(value || 0)
-  if (key === 'move_speed_pct') {
-    return {
-      kind: 'lightning',
-      assetKey: 'talentLightningEffect',
-      color: '#68b7ff',
-      secondary: '#ffca55',
-      strength: Math.min(1.5, 0.86 + amount * 3.4)
-    }
-  }
-  if (['attack_pct', 'defense_pct', 'max_hp_pct'].includes(key)) {
-    return {
+  const styles = {
+    attack_pct: {
       kind: 'flame',
       assetKey: 'talentFlameEffect',
       color: '#ff7a7c',
       secondary: '#ffca55',
       strength: Math.min(1.48, 0.88 + amount * 3.2)
+    },
+    defense_pct: {
+      kind: 'ward',
+      assetKey: 'talentWardEffect',
+      color: '#5fd18b',
+      secondary: '#68b7ff',
+      strength: Math.min(1.42, 0.82 + amount * 3.2)
+    },
+    max_hp_pct: {
+      kind: 'vigor',
+      assetKey: 'talentVigorEffect',
+      color: '#ff7a7c',
+      secondary: '#b779ff',
+      strength: Math.min(1.46, 0.84 + amount * 3.0)
+    },
+    move_speed_pct: {
+      kind: 'lightning',
+      assetKey: 'talentLightningEffect',
+      color: '#68b7ff',
+      secondary: '#ffca55',
+      strength: Math.min(1.5, 0.86 + amount * 3.4)
+    },
+    drop_rate_pct: {
+      kind: 'treasure',
+      assetKey: 'talentTreasureEffect',
+      color: '#68b7ff',
+      secondary: '#fff36a',
+      strength: Math.min(1.42, 0.86 + amount * 5.0)
+    },
+    gold_pct: {
+      kind: 'gold',
+      assetKey: 'talentGoldEffect',
+      color: '#ffca55',
+      secondary: '#fff36a',
+      strength: Math.min(1.44, 0.84 + amount * 2.8)
+    },
+    exp_pct: {
+      kind: 'exp',
+      assetKey: 'talentExpEffect',
+      color: '#7df7ff',
+      secondary: '#fff36a',
+      strength: Math.min(1.42, 0.86 + amount * 3.0)
+    },
+    treasure_mimic_chance_pct: {
+      kind: 'mimic',
+      assetKey: 'talentMimicEffect',
+      color: '#b779ff',
+      secondary: '#ffca55',
+      strength: Math.min(1.5, 0.92 + amount * 12.0)
+    },
+    rift_drop_rate_pct: {
+      kind: 'rift',
+      assetKey: 'talentRiftEffect',
+      color: '#b779ff',
+      secondary: '#68b7ff',
+      strength: Math.min(1.5, 0.9 + amount * 4.2)
+    },
+    all_stats_pct: {
+      kind: 'dragon',
+      assetKey: 'talentDragonEffect',
+      color: '#ffca55',
+      secondary: '#ff78e6',
+      strength: Math.min(1.52, 0.9 + amount * 4.2)
     }
   }
-  return {
-    kind: 'dragon',
-    assetKey: 'talentDragonEffect',
-    color: '#ffca55',
-    secondary: '#ff78e6',
-    strength: Math.min(1.52, 0.9 + amount * 4.2)
-  }
+  return styles[key] || styles.all_stats_pct
 }
 
 function drawPixellabTalentAura(skeleton, style) {
@@ -4477,6 +4620,46 @@ function drawEquipmentGlow(anchor, appearance, width, height) {
   ctx.restore()
 }
 
+function drawPixellabEquipmentEffect(anchor, item, slot) {
+  const image = assetImage('equipmentEnchantEffect')
+  if (!image || !anchor || !item || !['purple', 'gold', 'red', 'rainbow'].includes(item.rarity)) {
+    return false
+  }
+  const rarityScale = {
+    purple: 0.68,
+    gold: 0.82,
+    red: 0.96,
+    rainbow: 1.18
+  }[item.rarity] || 0.7
+  const slotScale = {
+    weapon: 0.7,
+    helmet: 0.76,
+    armor: 1.02,
+    boots: 0.9,
+    ring: 0.66
+  }[slot] || 0.72
+  const now = state.lastRenderAt || 0
+  const pulse = 0.56 + animationPhase(580) * 0.44
+  const size = 96 * rarityScale * slotScale * (0.92 + pulse * 0.14)
+  const offsets = {
+    weapon: { x: 7, y: -3 },
+    helmet: { x: 0, y: -4 },
+    armor: { x: -6, y: -12 },
+    boots: { x: 0, y: 8 },
+    ring: { x: 0, y: -3 }
+  }[slot] || { x: 0, y: 0 }
+  const rotation = slot === 'weapon'
+    ? Math.sin(now / 260) * 0.18
+    : now / (slot === 'boots' ? 1300 : 1900)
+  ctx.save()
+  ctx.translate(anchor.x + offsets.x, anchor.y + offsets.y)
+  ctx.rotate(rotation)
+  ctx.globalAlpha = item.rarity === 'rainbow' ? 0.78 : item.rarity === 'red' ? 0.56 : 0.42
+  ctx.drawImage(image, -size / 2, -size / 2, size, size)
+  ctx.restore()
+  return true
+}
+
 function drawEquippedParticleEffects(skeleton, entity) {
   const equipped = entity.equipped || {}
   const anchors = {
@@ -4498,6 +4681,7 @@ function drawEquippedParticleEffects(skeleton, entity) {
     if (!appearance.aura && !['purple', 'gold', 'red', 'rainbow'].includes(item.rarity)) {
       return
     }
+    drawPixellabEquipmentEffect(anchors[slot] || skeleton.torso, item, slot)
     drawRarityParticle(anchors[slot] || skeleton.torso, item, slot)
   })
 }

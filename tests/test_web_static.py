@@ -76,6 +76,9 @@ class WebStaticTests(unittest.TestCase):
 
         for marker in (
             "renderSystemShop",
+            "SYSTEM_SHOP_TRANSLATIONS",
+            "systemShopDisplayName",
+            "systemShopDescription",
             "systemShopPreviewHtml",
             "systemShopPreviewItem",
             "/system-shop/buy",
@@ -487,10 +490,10 @@ class WebStaticTests(unittest.TestCase):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
-        self.assertIn('/web/app.js?v=assassin-v54', html)
-        self.assertIn('/web/styles.css?v=assassin-v54', html)
+        self.assertIn('/web/app.js?v=assassin-v55', html)
+        self.assertIn('/web/styles.css?v=assassin-v55', html)
         self.assertIn("PIXEL_ASSET_VERSION", script)
-        self.assertIn("assassin-v54", script)
+        self.assertIn("assassin-v55", script)
         self.assertIn("?v=${PIXEL_ASSET_VERSION}", script)
 
     def test_stage_loading_waits_for_current_hero_sprite_before_revealing_canvas(self) -> None:
@@ -786,11 +789,32 @@ class WebStaticTests(unittest.TestCase):
         ):
             self.assertIn(marker, script)
 
+    def test_system_shop_display_uses_translated_item_copy(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("\\u6350\\u8d60\\u5370\\u8bb0", script)
+        self.assertIn("\\u68f1\\u5f69\\u5229\\u5203", script)
+        self.assertIn("systemShopDisplayName(entry)", script)
+        self.assertIn("systemShopDescription(entry)", script)
+        self.assertNotIn("escapeHtml(entry.name || entry.sku)</span>", script)
+        self.assertNotIn("escapeHtml(entry.description || '')", script)
+
     def test_pixellab_talent_effect_assets_exist_and_are_wired(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
         manifest = json.loads((ROOT / "web" / "assets" / "pixel" / "v1" / "manifests" / "assets.json").read_text(encoding="utf-8"))
 
-        for name in ("talent_lightning", "talent_flame", "talent_dragon"):
+        for name in (
+            "talent_lightning",
+            "talent_flame",
+            "talent_dragon",
+            "talent_ward",
+            "talent_vigor",
+            "talent_treasure",
+            "talent_gold",
+            "talent_exp",
+            "talent_mimic",
+            "talent_rift",
+        ):
             path = ROOT / "web" / "assets" / "pixel" / "v1" / "effects" / f"{name}.png"
             self.assertTrue(path.exists(), name)
             width, height, pixels = read_png(path)
@@ -802,6 +826,13 @@ class WebStaticTests(unittest.TestCase):
             "talentLightningEffect",
             "talentFlameEffect",
             "talentDragonEffect",
+            "talentWardEffect",
+            "talentVigorEffect",
+            "talentTreasureEffect",
+            "talentGoldEffect",
+            "talentExpEffect",
+            "talentMimicEffect",
+            "talentRiftEffect",
             "drawPixellabTalentAura",
             "talentAuraStyles",
             "talentStyleForEffect",
@@ -816,6 +847,20 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("goldLossFloatText", script)
         self.assertIn("gold_lost", script)
         self.assertIn("rarity: lootFloatRarity(event)", script)
+
+    def test_pixellab_equipment_effect_asset_exists_and_is_wired(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        manifest = json.loads((ROOT / "web" / "assets" / "pixel" / "v1" / "manifests" / "assets.json").read_text(encoding="utf-8"))
+        path = ROOT / "web" / "assets" / "pixel" / "v1" / "effects" / "equipment_enchant.png"
+
+        self.assertTrue(path.exists())
+        width, height, pixels = read_png(path)
+        self.assertEqual((width, height), (128, 128))
+        self.assertGreater(sum(pixels[3::4]), 0)
+        self.assertIn("equipment_enchant", manifest["effects"])
+        self.assertIn("equipmentEnchantEffect", script)
+        self.assertIn("drawPixellabEquipmentEffect", script)
+        self.assertIn("drawPixellabEquipmentEffect(anchors[slot]", script)
 
     def test_frontend_draws_attack_and_rarity_particle_effects(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")

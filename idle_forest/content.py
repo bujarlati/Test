@@ -103,13 +103,13 @@ RARITY_NAME_PREFIX: dict[Rarity, tuple[str, ...]] = {
 }
 
 SYSTEM_SHOP_DONATION_SKU = "donation"
-SYSTEM_SHOP_DONATION_COST = 2500
+SYSTEM_SHOP_DONATION_COST = 25000
 SYSTEM_SHOP_RAINBOW_COSTS: dict[str, int] = {
-    "rainbow_weapon": 120000,
-    "rainbow_helmet": 90000,
-    "rainbow_armor": 110000,
-    "rainbow_boots": 85000,
-    "rainbow_ring": 95000,
+    "rainbow_weapon": 1200000,
+    "rainbow_helmet": 900000,
+    "rainbow_armor": 1100000,
+    "rainbow_boots": 850000,
+    "rainbow_ring": 950000,
 }
 SYSTEM_SHOP_RAINBOW_SLOTS: dict[str, EquipmentSlot] = {
     "rainbow_weapon": EquipmentSlot.WEAPON,

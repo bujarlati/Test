@@ -615,6 +615,46 @@
       "image": "/web/assets/pixel/v1/effects/talent_dragon.png",
       "frameWidth": 128,
       "frameHeight": 128
+    },
+    "talent_ward": {
+      "image": "/web/assets/pixel/v1/effects/talent_ward.png",
+      "frameWidth": 128,
+      "frameHeight": 128
+    },
+    "talent_vigor": {
+      "image": "/web/assets/pixel/v1/effects/talent_vigor.png",
+      "frameWidth": 128,
+      "frameHeight": 128
+    },
+    "talent_treasure": {
+      "image": "/web/assets/pixel/v1/effects/talent_treasure.png",
+      "frameWidth": 128,
+      "frameHeight": 128
+    },
+    "talent_gold": {
+      "image": "/web/assets/pixel/v1/effects/talent_gold.png",
+      "frameWidth": 128,
+      "frameHeight": 128
+    },
+    "talent_exp": {
+      "image": "/web/assets/pixel/v1/effects/talent_exp.png",
+      "frameWidth": 128,
+      "frameHeight": 128
+    },
+    "talent_mimic": {
+      "image": "/web/assets/pixel/v1/effects/talent_mimic.png",
+      "frameWidth": 128,
+      "frameHeight": 128
+    },
+    "talent_rift": {
+      "image": "/web/assets/pixel/v1/effects/talent_rift.png",
+      "frameWidth": 128,
+      "frameHeight": 128
+    },
+    "equipment_enchant": {
+      "image": "/web/assets/pixel/v1/effects/equipment_enchant.png",
+      "frameWidth": 128,
+      "frameHeight": 128
     }
   }
 }

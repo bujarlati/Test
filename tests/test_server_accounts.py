@@ -255,6 +255,41 @@ class ServerAccountTests(unittest.TestCase):
 
         self.assertIn(("response", self.server_module.HTTPStatus.OK), calls)
 
+    def test_tick_endpoint_throttles_character_saves_between_autosave_windows(self) -> None:
+        registered = self._post("/account/register", {"username": "autosave", "password": "forest-pass"})
+        token = registered["session_token"]
+        self._create_character(token, "Saver", "female")
+        save_calls: list[float] = []
+        original_save = self.server_module._save_character_runtime
+
+        def spy_save(character_id: str, runtime) -> None:
+            save_calls.append(runtime.engine.time_seconds)
+            original_save(character_id, runtime)
+
+        self.server_module._save_character_runtime = spy_save
+        try:
+            for _ in range(3):
+                self._post("/tick", {"seconds": 0.25}, token=token)
+        finally:
+            self.server_module._save_character_runtime = original_save
+
+        self.assertEqual(save_calls, [])
+
+    def test_auto_rift_endpoint_toggles_active_character_rift_loop(self) -> None:
+        registered = self._post("/account/register", {"username": "autorift", "password": "forest-pass"})
+        token = registered["session_token"]
+        self._create_character(token, "Looper", "female")
+
+        enabled = self._post("/rift/auto", {"enabled": True}, token=token)
+
+        self.assertTrue(enabled["snapshot"]["rift"]["auto"])
+        self.assertTrue(enabled["snapshot"]["rift"]["active"])
+        self.assertEqual(enabled["snapshot"]["mode"], "rift")
+
+        disabled = self._post("/rift/auto", {"enabled": False}, token=token)
+
+        self.assertFalse(disabled["snapshot"]["rift"]["auto"])
+
     def _get(self, path: str, token: str | None = None) -> dict:
         return self._request("GET", path, None, token)
 

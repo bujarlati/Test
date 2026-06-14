@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Idle Forest</title>
-    <link rel="stylesheet" href="/web/styles.css?v=assassin-v58" />
+    <link rel="stylesheet" href="/web/styles.css?v=assassin-v82" />
   </head>
   <body>
     <section id="profileGate" class="profile-gate">
@@ -114,12 +114,17 @@
           </div>
         </div>
         <div id="reviveText" class="revive-banner hidden"></div>
+        <div id="riftDebugPanel" class="rift-debug-panel hidden" aria-live="polite">
+          <strong>Rift Debug</strong>
+          <pre id="riftDebugText">waiting</pre>
+        </div>
         <div class="stage-hud">
           <div>
             <span id="modeText">森林</span>
             <strong id="riftStateText">普通挂机</strong>
           </div>
           <button id="enterRiftButton">进入秘境</button>
+          <button id="autoRiftButton" class="muted">自动秘境</button>
           <button id="leaveRiftButton" class="muted" disabled>离开秘境</button>
         </div>
       </section>
@@ -252,6 +257,6 @@
       </div>
     </section>
 
-    <script src="/web/app.js?v=assassin-v58"></script>
+    <script src="/web/app.js?v=assassin-v82"></script>
   </body>
 </html>

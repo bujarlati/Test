@@ -30,6 +30,7 @@ class PersistenceTests(unittest.TestCase):
         engine.hero.inventory.append(loot)
         listing = engine.list_item(loot.id, price=77)
         engine.buy_listing(listing.id, buyer_id="player_2")
+        engine.set_auto_rift(True)
 
         with tempfile.TemporaryDirectory() as directory:
             store = SaveStore(Path(directory) / "savegame.json")
@@ -54,6 +55,8 @@ class PersistenceTests(unittest.TestCase):
         self.assertEqual(restored.hero.gender, "female")
         self.assertEqual(restored.hero.gold, engine.hero.gold)
         self.assertEqual(restored.forest_depth, 2)
+        self.assertTrue(restored.auto_rift)
+        self.assertEqual(restored.mode, "rift")
         self.assertEqual(restored.tick, engine.tick)
         self.assertEqual(restored.hero.equipped.keys(), engine.hero.equipped.keys())
         self.assertEqual(

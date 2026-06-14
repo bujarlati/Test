@@ -8,11 +8,14 @@ from pathlib import Path
 import unittest
 
 from idle_forest import GameEngine
+from idle_forest.engine import SCENERY_CACHE_AHEAD
 from idle_forest.config import (
     HERO_DEATH_GOLD_LOSS_MAX_PCT,
     HERO_DEATH_GOLD_LOSS_MIN_PCT,
     HERO_REVIVE_SECONDS,
     MONSTER_APPROACH_DISTANCE,
+    RIFT_MONSTER_APPROACH_DISTANCE,
+    SCENE_CHUNK_WIDTH,
     TREASURE_MIMIC_PITY_THRESHOLD,
 )
 from idle_forest.content import (
@@ -297,6 +300,19 @@ class GameEngineTests(unittest.TestCase):
         self.assertGreater(len(snapshot["scene"]["decorations"]), 0)
         self.assertEqual(len(snapshot["hero"]["talents"]), 3)
 
+    def test_long_running_scenery_cache_is_bounded_around_camera(self) -> None:
+        engine = GameEngine(seed=106)
+        engine.active_monster = None
+        engine.hero.x = SCENE_CHUNK_WIDTH * 1600
+        engine._next_encounter_x = engine.hero.x + 9999
+
+        snapshot = engine.snapshot()
+
+        self.assertGreater(len(snapshot["scene"]["decorations"]), 0)
+        self.assertLessEqual(len(engine.decorations), 96)
+        min_cached_x = min(float(decor["x"]) for decor in engine.decorations)
+        self.assertGreaterEqual(min_cached_x, engine.hero.x - 1600)
+
     def test_move_speed_reaches_next_forest_encounter_faster(self) -> None:
         slow = GameEngine(seed=101)
         fast = GameEngine(seed=101)
@@ -383,6 +399,23 @@ class GameEngineTests(unittest.TestCase):
         distance = engine.active_monster.x - engine.hero.x
         self.assertGreaterEqual(MONSTER_APPROACH_DISTANCE, 800.0)
         self.assertGreaterEqual(distance, 800.0)
+        monster_entity = [
+            entity for entity in engine.snapshot()["scene"]["entities"] if entity["type"] == "monster"
+        ][0]
+        self.assertEqual(monster_entity["kind"], engine.active_monster.kind)
+
+    def test_crossing_forest_encounter_continues_into_combat_without_lost_tick(self) -> None:
+        engine = GameEngine(seed=108)
+        engine.hero.equipped.clear()
+        engine.hero.speed = 2000.0
+        engine.hero.base_attack_speed = 1.0
+        engine._next_encounter_x = engine.hero.x + 10.0
+
+        engine._advance_step(0.5)
+
+        event_kinds = [event.kind for event in engine.events]
+        self.assertIn("monster_spawn", event_kinds)
+        self.assertIn("hero_attack", event_kinds)
 
     def test_deepen_forest_increases_difficulty_and_changes_scene(self) -> None:
         engine = GameEngine(seed=35)
@@ -430,7 +463,23 @@ class GameEngineTests(unittest.TestCase):
         self.assertIsNotNone(engine.active_monster)
         assert engine.active_monster is not None
         distance = engine.active_monster.x - engine.hero.x
+        self.assertEqual(distance, RIFT_MONSTER_APPROACH_DISTANCE)
         self.assertGreaterEqual(distance, 800.0)
+        self.assertGreater(distance, engine.hero.attack_range)
+
+    def test_enter_rift_clears_current_forest_monster(self) -> None:
+        engine = GameEngine(seed=127)
+        engine._spawn_monster()
+        self.assertIsNotNone(engine.active_monster)
+
+        engine.enter_rift()
+
+        self.assertIsNone(engine.active_monster)
+        self.assertEqual(engine.hero.x, 0.0)
+        monster_entities = [
+            entity for entity in engine.snapshot()["scene"]["entities"] if entity["type"] == "monster"
+        ]
+        self.assertEqual(monster_entities, [])
 
     def test_hero_waits_to_attack_until_inside_weapon_range(self) -> None:
         engine = GameEngine(seed=22)
@@ -444,6 +493,21 @@ class GameEngineTests(unittest.TestCase):
         engine._advance_combat(0.25)
 
         self.assertEqual(engine.active_monster.hp, 500)
+
+    def test_hero_attacks_immediately_when_approach_reaches_weapon_range(self) -> None:
+        engine = GameEngine(seed=107)
+        engine.hero.equipped.clear()
+        engine.hero.base_attack_speed = 1.0
+        engine._spawn_monster()
+        assert engine.active_monster is not None
+        engine.active_monster.max_hp = 500
+        engine.active_monster.hp = 500
+        engine.active_monster.x = engine.hero.x + engine.hero.attack_range + 2
+
+        engine._advance_combat(0.25)
+
+        assert engine.active_monster is not None
+        self.assertLess(engine.active_monster.hp, 500)
 
     def test_attack_speed_controls_attack_interval(self) -> None:
         engine = GameEngine(seed=23)
@@ -567,6 +631,18 @@ class GameEngineTests(unittest.TestCase):
         self.assertEqual(snapshot["scene"]["biome"], rift.theme)
         self.assertGreater(snapshot["rift"]["minions_required"], 0)
 
+    def test_enter_rift_seeds_scenery_to_screen_edge_before_first_tick(self) -> None:
+        engine = GameEngine(seed=707)
+
+        engine.enter_rift()
+        snapshot = engine.snapshot()
+
+        camera_x = float(snapshot["scene"]["camera"]["x"])
+        decorations = snapshot["scene"]["decorations"]
+        self.assertGreater(len(decorations), 0)
+        max_decor_x = max(float(decor["x"]) for decor in decorations)
+        self.assertGreaterEqual(max_decor_x, camera_x + SCENERY_CACHE_AHEAD - SCENE_CHUNK_WIDTH * 1.5)
+
     def test_rift_completion_unlocks_next_floor(self) -> None:
         engine = GameEngine(seed=8)
         weapon = Equipment(
@@ -603,6 +679,62 @@ class GameEngineTests(unittest.TestCase):
         self.assertTrue(
             any(event["kind"] == "rift_complete" for event in engine.snapshot()["events"])
         )
+
+    def test_auto_rift_enters_and_continues_to_next_unlocked_floor(self) -> None:
+        engine = GameEngine(seed=81)
+
+        rift = engine.set_auto_rift(True)
+
+        self.assertTrue(engine.auto_rift)
+        self.assertEqual(engine.mode, "rift")
+        self.assertEqual(rift.floor, 1)
+        self.assertTrue(engine.snapshot()["rift"]["auto"])
+
+        engine._complete_rift()
+
+        self.assertTrue(engine.auto_rift)
+        self.assertEqual(engine.mode, "rift")
+        self.assertIsNotNone(engine.active_rift)
+        self.assertEqual(engine.active_rift.floor, 2)
+        self.assertEqual(engine.unlocked_rift_floor, 2)
+
+    def test_manual_rift_leave_stops_auto_rift(self) -> None:
+        engine = GameEngine(seed=82)
+        engine.set_auto_rift(True)
+
+        engine.leave_rift()
+
+        self.assertFalse(engine.auto_rift)
+        self.assertEqual(engine.mode, "forest")
+        self.assertFalse(engine.snapshot()["rift"]["auto"])
+
+    def test_auto_rift_death_exits_and_stops_auto_mode(self) -> None:
+        engine = GameEngine(seed=83)
+        engine.set_auto_rift(True)
+        origin_x = engine.active_rift.origin_x
+        engine.active_monster = Monster(
+            id="auto_rift_brute",
+            kind="auto_rift_brute",
+            level=1,
+            max_hp=20,
+            hp=20,
+            attack=10,
+            defense=1,
+            exp_reward=1,
+            gold_reward=1,
+            x=engine.hero.x + 12,
+            y=engine.hero.y,
+            role="minion",
+            theme="rift",
+        )
+
+        engine._hero_defeated()
+
+        self.assertFalse(engine.auto_rift)
+        self.assertEqual(engine.mode, "forest")
+        self.assertIsNone(engine.active_rift)
+        self.assertEqual(engine.hero.x, origin_x)
+        self.assertTrue(engine.snapshot()["hero"]["reviving"])
 
     def test_treasure_mimic_drops_special_set_item(self) -> None:
         engine = GameEngine(seed=9)
@@ -764,6 +896,45 @@ class GameEngineTests(unittest.TestCase):
         self.assertEqual(len(third["talents"]), 3)
         with self.assertRaises(ValueError):
             session.roll(name="Astra", gender="female")
+
+    def test_monster_roster_exposes_forest_rift_and_boss_kinds(self) -> None:
+        from idle_forest.content import (
+            DEEP_FOREST_MONSTER_KINDS,
+            MONSTER_KINDS,
+            RIFT_BOSSES,
+            RIFT_MONSTERS,
+        )
+
+        self.assertEqual(
+            MONSTER_KINDS,
+            ("forest_slime", "thorn_boar", "moss_imp", "wild_mushroom", "bark_guard"),
+        )
+        self.assertEqual(
+            DEEP_FOREST_MONSTER_KINDS,
+            (
+                "shadow_slime",
+                "bramble_wolf",
+                "gloom_imp",
+                "venom_mushroom",
+                "ancient_bark_guard",
+            ),
+        )
+        self.assertEqual(
+            RIFT_MONSTERS,
+            {
+                "cave": ("cave_bat", "crystal_lurker", "stone_crawler"),
+                "sky": ("cloud_wisp", "storm_harpy", "sun_mote"),
+                "castle": ("rust_guard", "hollow_knight", "cursed_squire"),
+            },
+        )
+        self.assertEqual(
+            RIFT_BOSSES,
+            {"cave": "cave_warden", "sky": "tempest_seraph", "castle": "throne_keeper"},
+        )
+        self.assertEqual(len(MONSTER_KINDS), 5)
+        self.assertEqual(len(DEEP_FOREST_MONSTER_KINDS), 5)
+        self.assertEqual(sum(len(kinds) for kinds in RIFT_MONSTERS.values()), 9)
+        self.assertEqual(len(set(RIFT_BOSSES.values())), 3)
 
 
 if __name__ == "__main__":

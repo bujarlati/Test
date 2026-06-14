@@ -24,6 +24,37 @@ class WebStaticTests(unittest.TestCase):
     def pixel_difference(self, left: bytearray, right: bytearray) -> int:
         return sum(abs(a - b) for a, b in zip(left, right))
 
+    def alpha_bbox(self, pixels: bytearray, width: int, height: int) -> tuple[int, int, int, int] | None:
+        min_x = width
+        min_y = height
+        max_x = -1
+        max_y = -1
+        for y in range(height):
+            for x in range(width):
+                if pixels[(y * width + x) * 4 + 3] <= 8:
+                    continue
+                min_x = min(min_x, x)
+                min_y = min(min_y, y)
+                max_x = max(max_x, x)
+                max_y = max(max_y, y)
+        if max_x < 0:
+            return None
+        return min_x, min_y, max_x + 1, max_y + 1
+
+    def monster_body_anchor_bbox(
+        self, pixels: bytearray, width: int, height: int
+    ) -> tuple[int, int, int, int] | None:
+        body = bytearray(pixels)
+        for index in range(0, len(body), 4):
+            if body[index + 3] <= 8:
+                continue
+            r, g, b = body[index], body[index + 1], body[index + 2]
+            brightness = (r + g + b) / 3
+            saturation = max(r, g, b) - min(r, g, b)
+            if brightness > 225 or (brightness > 185 and saturation > 85):
+                body[index + 3] = 0
+        return self.alpha_bbox(body, width, height)
+
     def frame_region_pixels(
         self,
         pixels: bytearray,
@@ -143,6 +174,43 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("return (x - cameraX) * worldScale + 56", script)
         self.assertIn("Math.min(VISUAL_MAX_FRAME_DELTA_MS", script)
 
+    def test_mobile_runtime_throttles_tick_and_render_work(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("MOBILE_SIMULATION_STEP_SECONDS = 0.5", script)
+        self.assertIn("MOBILE_SIMULATION_TICK_MS = 500", script)
+        self.assertIn("MOBILE_RENDER_FRAME_MS = 1000 / 30", script)
+        self.assertIn("function isMobileRuntime()", script)
+        self.assertIn("function simulationStepSeconds()", script)
+        self.assertIn("function simulationTickMs()", script)
+        self.assertIn("function renderFrameBudgetMs()", script)
+        self.assertIn("function shouldThrottleRenderFrame(timestamp)", script)
+        self.assertIn("if (shouldThrottleRenderFrame(timestamp))", script)
+        self.assertIn("function syncSimulationTimer(", script)
+        self.assertIn("simulationCadenceKey()", script)
+        self.assertIn("window.setInterval(() => tick(cadence.stepSeconds), cadence.tickMs)", script)
+
+    def test_desktop_window_width_does_not_enable_mobile_tick_cadence(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        start = script.index("function isMobileRuntime()")
+        end = script.index("function simulationStepSeconds()", start)
+        mobile_body = script[start:end]
+
+        self.assertIn("window.matchMedia('(pointer: coarse)')", mobile_body)
+        self.assertIn("navigator.maxTouchPoints", mobile_body)
+        self.assertNotIn("max-width", mobile_body)
+
+    def test_resize_resynchronizes_runtime_tick_cadence(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("tickCadenceKey: null", script)
+        self.assertIn("function handleViewportRuntimeChange()", script)
+        self.assertIn("state.lastPaintAt = 0", script)
+        self.assertIn("syncSimulationTimer()", script)
+        self.assertIn("window.addEventListener('resize', handleViewportRuntimeChange)", script)
+        self.assertIn("document.addEventListener('visibilitychange', handleViewportRuntimeChange)", script)
+
     def test_sprite_animation_does_not_crossfade_transparent_frames(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
@@ -188,6 +256,16 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("function monsterFacingFlip(entity)", script)
         self.assertNotIn("width, height, true, frames[2]", body)
         self.assertNotIn("width, height, true)", body)
+        self.assertIn("String(sprite.key || '').startsWith('pixelMonster')", script)
+
+    def test_safe_monster_generator_exists_for_complete_sprite_sheets(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        generator = (ROOT / "tools" / "generate_safe_monster_assets.py").read_text(encoding="utf-8")
+
+        self.assertIn("return PIXEL_SPRITES.monsters[exact]", script)
+        self.assertNotIn("PIXEL_MONSTER_STABLE_ACTIONS", script)
+        self.assertIn("Generate complete fixed-slot monster sprite sheets", generator)
+        self.assertIn("write_sheet(MONSTER_ROOT", generator)
 
     def test_attack_range_guide_does_not_draw_hand_dashed_line(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -501,11 +579,18 @@ class WebStaticTests(unittest.TestCase):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
-        self.assertIn('/web/app.js?v=assassin-v58', html)
-        self.assertIn('/web/styles.css?v=assassin-v58', html)
+        self.assertIn('/web/app.js?v=assassin-v82', html)
+        self.assertIn('/web/styles.css?v=assassin-v82', html)
         self.assertIn("PIXEL_ASSET_VERSION", script)
-        self.assertIn("assassin-v58", script)
+        self.assertIn("assassin-v82", script)
         self.assertIn("?v=${PIXEL_ASSET_VERSION}", script)
+
+    def test_static_files_are_served_without_browser_cache(self) -> None:
+        server = (ROOT / "server.py").read_text(encoding="utf-8")
+
+        self.assertIn('self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")', server)
+        self.assertIn('self.send_header("Pragma", "no-cache")', server)
+        self.assertIn('self.send_header("Expires", "0")', server)
 
     def test_stage_loading_waits_for_current_hero_sprite_before_revealing_canvas(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
@@ -540,6 +625,64 @@ class WebStaticTests(unittest.TestCase):
         width, height, _pixels = read_png(loading_asset)
         self.assertEqual(width, 64 * 8)
         self.assertEqual(height, 64)
+
+    def test_rift_entry_prewarms_backgrounds_without_blocking_rift_entry(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("const RIFT_BACKGROUND_PRELOAD_ASSET_KEYS = [", script)
+        for key in [
+            "bgCave",
+            "bgCastle",
+            "bgSky",
+            "bgClouds",
+            "groundStone",
+            "blockStone",
+            "brickGrey",
+        ]:
+            self.assertIn(f"'{key}'", script)
+        self.assertIn("const RIFT_COMBAT_PRELOAD_ASSET_KEYS = [", script)
+        for key in [
+            "pixelSlime",
+            "pixelThorn",
+            "pixelImp",
+            "pixelForestBoss",
+            "talentRiftEffect",
+        ]:
+            self.assertIn(f"'{key}'", script)
+        self.assertIn("const assetDecodePromises = {}", script)
+        self.assertIn("function decodeAssetImage(key)", script)
+        self.assertIn("image.decode ? image.decode().catch(() => null) : Promise.resolve(null)", script)
+        self.assertIn("function warmAssetKeys(keys)", script)
+        self.assertIn("function warmRiftAssets()", script)
+        self.assertIn("...RIFT_BACKGROUND_PRELOAD_ASSET_KEYS", script)
+        self.assertIn("...RIFT_COMBAT_PRELOAD_ASSET_KEYS", script)
+        self.assertIn("function scheduleRiftAssetWarmup()", script)
+        self.assertIn("window.requestIdleCallback || ((callback) => window.setTimeout(callback, 250))", script)
+        self.assertIn("function beginStageAssetTransition(snapshot)", script)
+        self.assertIn("waitForStageAssets(snapshot, token)", script)
+        self.assertIn("decodeAssetImage(key)", script)
+        self.assertIn("if (options.prepareStageAssets)", script)
+        self.assertIn("beginStageAssetTransition(snapshot)", script)
+        self.assertIn("warmRiftAssets()", script)
+        self.assertIn(
+            "postAction('/rift/enter', { floor: snapshot.rift.unlocked_floor }, t('enterRift'))",
+            script,
+        )
+        self.assertIn(
+            "postAction('/rift/auto', { enabled: !autoRift }, autoRift ? t('autoRiftOff') : t('autoRiftOn'))",
+            script,
+        )
+        start = script.index("els.enterRiftButton.addEventListener")
+        end = script.index("els.leaveRiftButton.addEventListener", start)
+        rift_handlers = script[start:end]
+        self.assertNotIn("prepareStageAssets", rift_handlers)
+        self.assertIn("scheduleRiftAssetWarmup()", script)
+        start = script.index("function stageAssetKeysForSnapshot(")
+        end = script.index("function waitForStageAssets(", start)
+        stage_body = script[start:end]
+        self.assertNotIn("RIFT_BACKGROUND_PRELOAD_ASSET_KEYS", stage_body)
+        self.assertNotIn("RIFT_COMBAT_PRELOAD_ASSET_KEYS", stage_body)
+        self.assertNotIn("RIFT_PRELOAD_ASSET_KEYS", stage_body)
 
     def test_frontend_uses_pixel_sprite_renderer_with_fallback(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -584,6 +727,17 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn(".profile-gate", media_body)
         self.assertIn("align-items: flex-start", media_body)
         self.assertIn("max-height: none", media_body)
+
+    def test_talent_list_has_own_scroll_region_for_expanded_talents(self) -> None:
+        styles = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        start = styles.index(".talent-list {")
+        end = styles.index("}", start)
+        talent_body = styles[start:end]
+
+        self.assertIn("max-height: min(42vh, 360px)", talent_body)
+        self.assertIn("overflow: auto", talent_body)
+        self.assertIn("padding-right: 4px", talent_body)
 
     def test_talent_evolve_buttons_lock_while_request_is_in_flight(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -635,6 +789,38 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("state.tickQueuedSeconds = Math.max(0, state.tickQueuedSeconds - queuedSeconds)", script)
         self.assertIn("window.setTimeout(() => tick(queuedSeconds), 0)", script)
 
+    def test_tick_requests_have_timeout_to_recover_from_stalled_updates(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("TICK_REQUEST_TIMEOUT_MS = 4000", script)
+        self.assertIn("const controller = options.timeoutMs ? new AbortController() : null", script)
+        self.assertIn("window.setTimeout(() => controller.abort(), options.timeoutMs)", script)
+        self.assertIn("signal: controller ? controller.signal : undefined", script)
+        self.assertIn("timeoutId && window.clearTimeout(timeoutId)", script)
+        self.assertIn("timeoutMs: TICK_REQUEST_TIMEOUT_MS", script)
+
+    def test_frontend_retries_read_fetches_after_transient_network_failure(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("NETWORK_RETRY_DELAY_MS = 180", script)
+        self.assertIn("function isReadRequest(options = {})", script)
+        self.assertIn("function isTransientFetchError(error)", script)
+        self.assertIn("function fetchWithNetworkRetry(path, request, options)", script)
+        self.assertIn("return fetchWithNetworkRetry(path, request, options)", script)
+        self.assertIn("if (!isReadRequest(options) || !isTransientFetchError(error))", script)
+        self.assertIn("window.setTimeout(resolve, NETWORK_RETRY_DELAY_MS)", script)
+
+    def test_frontend_hides_raw_failed_to_fetch_messages(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("function userFacingErrorMessage(error, fallbackKey = 'actionFail')", script)
+        self.assertIn("message.includes('failed to fetch')", script)
+        self.assertIn("message.includes('networkerror')", script)
+        self.assertIn("message.includes('abort')", script)
+        self.assertIn("return t(fallbackKey)", script)
+        self.assertIn("setStatus(userFacingErrorMessage(error), false)", script)
+        self.assertIn("setAccountStatus(userFacingErrorMessage(error, 'profileInvalid'), false)", script)
+
     def test_visual_state_interpolates_snapshot_targets(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
@@ -649,6 +835,20 @@ class WebStaticTests(unittest.TestCase):
             "shouldSkipMovingEntityLerp(entity)",
         ):
             self.assertIn(marker, script)
+
+    def test_mode_or_rift_run_change_resets_visual_camera_before_applying_snapshot(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        start = script.index("function applySnapshot(snapshot)")
+        end = script.index("function describeRiftState", start)
+        body = script[start:end]
+
+        self.assertIn("function riftRunKey(snapshot)", script)
+        self.assertIn("function shouldResetVisualForSnapshot(previousSnapshot, nextSnapshot)", script)
+        self.assertIn("return `${rift.floor || 0}:${rift.theme || ''}:${rift.started_tick || 0}`", script)
+        self.assertIn("const shouldResetVisual = shouldResetVisualForSnapshot(state.snapshot, snapshot)", body)
+        self.assertIn("if (shouldResetVisual)", body)
+        self.assertIn("resetVisualSmoothing()", body)
+        self.assertLess(body.index("resetVisualSmoothing()"), body.index("snapVisualStateToSnapshot(snapshot)"))
 
     def test_frontend_draws_equipped_models_and_item_previews(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -922,6 +1122,18 @@ class WebStaticTests(unittest.TestCase):
         ):
             self.assertIn(marker, script)
 
+    def test_frontend_renders_auto_rift_control(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="autoRiftButton"', html)
+        self.assertIn("autoRiftButton: document.querySelector('#autoRiftButton')", script)
+        self.assertIn("autoRiftOn", script)
+        self.assertIn("autoRiftOff", script)
+        self.assertIn("Boolean(rift.auto)", script)
+        self.assertIn("els.autoRiftButton.classList.toggle('active', autoRift)", script)
+        self.assertIn("postAction('/rift/auto', { enabled: !autoRift },", script)
+
     def test_frontend_has_settings_pause_volume_and_language(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -1003,7 +1215,7 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("HERO_CAMERA_MAX_LAG", script)
         self.assertIn("const fallbackCameraStep = speed * Math.max(0, seconds)", script)
         self.assertIn("const nextCameraX = state.visual.cameraX + cameraStep", script)
-        self.assertIn("syncCameraToHeroBounds(nextCameraX, heroX)", script)
+        self.assertIn("syncCameraToHeroBounds(nextCameraX, heroX, followOffset)", script)
         self.assertIn("function syncCameraToHeroBounds(", script)
         self.assertNotIn("heroX - HERO_CAMERA_OFFSET + lead", script)
         self.assertNotIn("snapshotTargetX + VISUAL_SNAP_DISTANCE", script)
@@ -1011,6 +1223,71 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("drawGround(biome, width, height, groundY, visualCameraX, worldScale)", script)
         self.assertIn("drawDecorations(scene.decorations || [], visualCameraX", script)
         self.assertNotIn("applyCameraDamping(Math.max(0, Number(hero.position.x || 0) - 180)", script)
+
+    def test_rift_camera_uses_same_follow_offset_as_forest(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("const RIFT_CAMERA_OFFSET = HERO_CAMERA_OFFSET", script)
+        self.assertIn("function cameraFollowOffset()", script)
+        self.assertIn("state.snapshot && state.snapshot.mode === 'rift'", script)
+        self.assertIn("return RIFT_CAMERA_OFFSET", script)
+        self.assertIn("return HERO_CAMERA_OFFSET", script)
+        self.assertIn("function syncCameraToHeroBounds(cameraX, heroX, followOffset = HERO_CAMERA_OFFSET)", script)
+        self.assertIn("const center = Math.max(0, heroX - followOffset)", script)
+        self.assertIn("const followOffset = cameraFollowOffset()", script)
+        self.assertIn("syncCameraToHeroBounds(nextCameraX, heroX, followOffset)", script)
+
+    def test_pixellab_monsters_do_not_get_extra_canvas_aura(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        pixel_block = script.split("const drewPixelMonster = drawPixelMonster", 1)[1].split("const drewMonster =", 1)[0]
+
+        self.assertIn("if (drewPixelMonster)", pixel_block)
+        self.assertIn("return", pixel_block)
+        self.assertNotIn("drawMonsterThreatOverlay", pixel_block)
+        self.assertNotIn("ctx.ellipse", pixel_block)
+
+    def test_pixellab_monster_health_bar_uses_sprite_height(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("function pixelMonsterDrawSize(entity, sprite = null)", script)
+        self.assertIn("const pixelSize = pixelMonsterDrawSize(entity)", script)
+        self.assertIn("const healthWidth = pixelSize ? Math.max(52 * scale, pixelSize.drawWidth * 0.62) : 52 * scale", script)
+        self.assertIn("const healthY = pixelSize ? y - flightLift + 5 - pixelSize.drawHeight - (boss ? 14 : 10) : y - 60 * scale", script)
+        self.assertIn("drawHealthBar(x - healthWidth / 2, healthY, healthWidth, 7", script)
+
+    def test_frontend_tracks_rift_transition_timing(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("riftTransition: null", script)
+        self.assertIn("function startRiftTransitionTrace(action)", script)
+        self.assertIn("function markRiftTransitionTrace(stage)", script)
+        self.assertIn("function finishRiftTransitionTrace(stage)", script)
+        self.assertIn("startRiftTransitionTrace('enter')", script)
+        self.assertIn("startRiftTransitionTrace('auto')", script)
+        self.assertIn("state.riftTransition.firstVisualHeroMoveAt", script)
+        self.assertIn("state.riftTransition.firstVisualCameraMoveAt", script)
+        self.assertIn("markRiftTransitionTrace('request-start')", script)
+        self.assertIn("markRiftTransitionTrace('response-received')", script)
+        self.assertIn("markRiftTransitionTrace('snapshot-applied')", script)
+        self.assertIn("finishRiftTransitionTrace('visual-ready')", script)
+        self.assertIn("riftTransition: state.riftTransition", script)
+
+    def test_frontend_can_show_rift_transition_debug_panel(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="riftDebugPanel"', html)
+        self.assertIn('id="riftDebugText"', html)
+        self.assertIn("riftDebugPanel: document.querySelector('#riftDebugPanel')", script)
+        self.assertIn("riftDebugText: document.querySelector('#riftDebugText')", script)
+        self.assertIn("riftDebugEnabled: false", script)
+        self.assertIn("new URLSearchParams(window.location.search).get('debug') === 'rift'", script)
+        self.assertIn("function updateRiftDebugPanel(debug)", script)
+        self.assertIn("formatDebugMs(durations.firstVisualHeroMoveMs)", script)
+        self.assertIn("formatDebugMs(durations.firstVisualCameraMoveMs)", script)
+        self.assertIn(".rift-debug-panel", styles)
+        self.assertIn(".rift-debug-panel.hidden", styles)
 
     def test_moving_entities_do_not_lerp_back_to_stale_snapshots(self) -> None:
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -1032,6 +1309,8 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("function visibleMonsterWithinAttackRange(", script)
         self.assertIn("const visualGrace = combatVisualRangeGrace(hero)", script)
         self.assertIn("monsterX - heroX <= Math.max(0, range) + visualGrace", script)
+        self.assertIn("if (visibleMonsterWithinAttackRange(current, currentMonster))", script)
+        self.assertIn("return false", script)
         self.assertIn("clearVisualCombatApproach(hero, monster)", script)
         self.assertIn("if (visibleMonsterWithinAttackRange(hero, monster))", script)
 
@@ -1047,6 +1326,11 @@ class WebStaticTests(unittest.TestCase):
         self.assertIn("tickQueuedSeconds: Number(state.tickQueuedSeconds.toFixed(3))", script)
         self.assertIn("tickTimerActive: Boolean(state.tickTimer)", script)
         self.assertIn("visualHeroState: visualHero && visualHero.state", script)
+        self.assertIn("visualHeroScreenX", script)
+        self.assertIn("visualMonsterScreenX", script)
+        self.assertIn("visualScreenDistance", script)
+        self.assertIn("snapshotScreenDistance", script)
+        self.assertIn("worldScale", script)
         self.assertIn("visualCombatApproach: Boolean(visualHero && visualHero.visualCombatApproach)", script)
         self.assertIn("combatVisualGrace: visualHero ? combatVisualRangeGrace(visualHero) : null", script)
 
@@ -1177,6 +1461,191 @@ class WebStaticTests(unittest.TestCase):
 
         self.assertIn("state.settings.paused = false", body)
         self.assertIn("saveSettings()", body)
+
+    def test_pixellab_monster_roster_assets_exist_and_are_wired(self) -> None:
+        manifest_path = ROOT / "web" / "assets" / "pixel" / "v1" / "manifests" / "assets.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        sprite_records = [
+            "forest_slime",
+            "thorn_boar",
+            "moss_imp",
+            "wild_mushroom",
+            "bark_guard",
+            "cave_bat",
+            "crystal_lurker",
+            "stone_crawler",
+            "cloud_wisp",
+            "storm_harpy",
+            "sun_mote",
+            "rust_guard",
+            "hollow_knight",
+            "cursed_squire",
+        ]
+        deep_aliases = ["shadow_slime", "bramble_wolf", "gloom_imp", "venom_mushroom", "ancient_bark_guard"]
+        bosses = ["cave_warden", "tempest_seraph", "throne_keeper"]
+        monsters = manifest["monsters"]
+
+        for key in sprite_records:
+            self.assertIn(key, monsters)
+            record = monsters[key]
+            self.assertEqual(record["frameWidth"], 64)
+            self.assertEqual(record["frameHeight"], 64)
+            self.assertEqual(record["source"], "pixellab")
+            self.assertEqual(set(record["animations"]), {"idle", "walk", "attack", "hurt", "death"})
+            image_path = ROOT / record["image"].lstrip("/")
+            self.assertTrue(image_path.exists(), image_path)
+            self.assertEqual(image_path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+            self.assertIn(key, script)
+
+        for key in deep_aliases:
+            self.assertIn(key, script)
+
+        for key in bosses:
+            self.assertIn(key, monsters)
+            record = monsters[key]
+            self.assertEqual(record["frameWidth"], 128)
+            self.assertEqual(record["frameHeight"], 128)
+            self.assertEqual(record["source"], "pixellab")
+            self.assertEqual(set(record["animations"]), {"idle", "walk", "attack", "hurt", "death"})
+            image_path = ROOT / record["image"].lstrip("/")
+            self.assertTrue(image_path.exists(), image_path)
+            self.assertEqual(image_path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+            self.assertIn(key, script)
+
+        self.assertIn("const MONSTER_KIND_SPRITES = {", script)
+        self.assertIn("MONSTER_KIND_SPRITES[entity.kind]", script)
+
+    def test_pixellab_monster_frames_are_normalized_inside_sprite_slots(self) -> None:
+        manifest_path = ROOT / "web" / "assets" / "pixel" / "v1" / "manifests" / "assets.json"
+        monsters = json.loads(manifest_path.read_text(encoding="utf-8"))["monsters"]
+        keys = [
+            "forest_slime",
+            "thorn_boar",
+            "moss_imp",
+            "wild_mushroom",
+            "bark_guard",
+            "cave_bat",
+            "crystal_lurker",
+            "stone_crawler",
+            "cloud_wisp",
+            "storm_harpy",
+            "sun_mote",
+            "rust_guard",
+            "hollow_knight",
+            "cursed_squire",
+            "cave_warden",
+            "tempest_seraph",
+            "throne_keeper",
+        ]
+
+        for key in keys:
+            record = monsters[key]
+            width, _height, pixels = read_png(ROOT / record["image"].lstrip("/"))
+            frame_width = record["frameWidth"]
+            frame_height = record["frameHeight"]
+            min_visible_pixels = 120 if frame_width == 64 else 420
+            for animation in ("idle", "walk", "attack"):
+                row = record["animations"][animation]["row"]
+                for frame in range(record["animations"][animation]["frames"]):
+                    frame_pixels = self.frame_pixels(pixels, width, frame_width, frame_height, row, frame)
+                    bbox = self.alpha_bbox(frame_pixels, frame_width, frame_height)
+                    self.assertIsNotNone(bbox, f"{key} {animation} frame {frame + 1} is empty")
+                    assert bbox is not None
+                    visible_pixels = sum(
+                        1 for index in range(3, len(frame_pixels), 4) if frame_pixels[index] > 8
+                    )
+                    self.assertGreaterEqual(
+                        visible_pixels,
+                        min_visible_pixels,
+                        f"{key} {animation} frame {frame + 1} is too sparse",
+                    )
+                    self.assertGreaterEqual(bbox[0], 2, f"{key} {animation} frame {frame + 1} touches left edge")
+                    self.assertGreaterEqual(bbox[1], 2, f"{key} {animation} frame {frame + 1} touches top edge")
+                    self.assertLessEqual(
+                        bbox[2],
+                        frame_width - 2,
+                        f"{key} {animation} frame {frame + 1} touches right edge",
+                    )
+                    self.assertLessEqual(
+                        bbox[3],
+                        frame_height - 2,
+                        f"{key} {animation} frame {frame + 1} touches bottom edge",
+                    )
+
+    def test_pixellab_monster_body_frames_keep_stable_anchor(self) -> None:
+        manifest_path = ROOT / "web" / "assets" / "pixel" / "v1" / "manifests" / "assets.json"
+        monsters = json.loads(manifest_path.read_text(encoding="utf-8"))["monsters"]
+        keys = [
+            "forest_slime",
+            "thorn_boar",
+            "moss_imp",
+            "wild_mushroom",
+            "bark_guard",
+            "cave_bat",
+            "crystal_lurker",
+            "stone_crawler",
+            "cloud_wisp",
+            "storm_harpy",
+            "sun_mote",
+            "rust_guard",
+            "hollow_knight",
+            "cursed_squire",
+            "cave_warden",
+            "tempest_seraph",
+            "throne_keeper",
+        ]
+
+        for key in keys:
+            record = monsters[key]
+            width, _height, pixels = read_png(ROOT / record["image"].lstrip("/"))
+            frame_width = record["frameWidth"]
+            frame_height = record["frameHeight"]
+            max_center_span = 10.0 if key == "storm_harpy" else (7.0 if frame_width == 64 else 7.0)
+            max_area_ratio = 1.75
+            for animation in ("idle", "walk", "attack"):
+                row = record["animations"][animation]["row"]
+                boxes = []
+                areas = []
+                for frame in range(record["animations"][animation]["frames"]):
+                    frame_pixels = self.frame_pixels(pixels, width, frame_width, frame_height, row, frame)
+                    bbox = self.monster_body_anchor_bbox(frame_pixels, frame_width, frame_height)
+                    if bbox is None:
+                        bbox = self.alpha_bbox(frame_pixels, frame_width, frame_height)
+                    self.assertIsNotNone(bbox, f"{key} {animation} frame {frame + 1} is empty")
+                    assert bbox is not None
+                    boxes.append(bbox)
+                    areas.append(sum(1 for index in range(3, len(frame_pixels), 4) if frame_pixels[index] > 8))
+                centers_y = [(bbox[1] + bbox[3]) / 2 for bbox in boxes]
+                bottoms = [bbox[3] for bbox in boxes]
+                self.assertLessEqual(
+                    max(centers_y) - min(centers_y),
+                    max_center_span,
+                    f"{key} {animation} body jumps vertically between frames",
+                )
+                self.assertLessEqual(
+                    max(bottoms) - min(bottoms),
+                    2,
+                    f"{key} {animation} bottom anchor drifts between frames",
+                )
+                self.assertLessEqual(
+                    max(areas) / max(1, min(areas)),
+                    max_area_ratio,
+                    f"{key} {animation} visible body area changes too much",
+                )
+
+    def test_monster_attack_events_drive_pixel_attack_animation(self) -> None:
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("monsterAttackEffects: []", script)
+        self.assertIn("seenMonsterAttackEventKeys: new Set()", script)
+        self.assertIn("function trackMonsterAttackEffects(events = [], scene = null)", script)
+        self.assertIn("event.kind !== 'monster_attack'", script)
+        self.assertIn("function recentMonsterAttackEffect(entity)", script)
+        self.assertIn("if (recentMonsterAttackEffect(entity)) return 'attack'", script)
+        self.assertIn("trackMonsterAttackEffects(snapshot.events || [], snapshot.scene)", script)
+        self.assertNotIn("if (entity.role === 'boss') return 'attack'", script)
 
 
 if __name__ == "__main__":

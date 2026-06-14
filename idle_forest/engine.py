@@ -25,6 +25,7 @@ from .config import (
     RIFT_MINION_DROP_BONUS,
     RIFT_MINIONS_BASE,
     RIFT_MINIONS_MAX,
+    RIFT_MONSTER_APPROACH_DISTANCE,
     SCENE_CHUNK_WIDTH,
     TALENT_SCROLL_DROP_CHANCE,
     TREASURE_MIMIC_CHANCE,
@@ -55,6 +56,10 @@ from .talents import (
     evolve_talent_roll,
     roll_starting_talents,
 )
+
+
+SCENERY_CACHE_BACKTRACK = 1400.0
+SCENERY_CACHE_AHEAD = 1200.0
 
 
 class GameEngine:
@@ -94,6 +99,7 @@ class GameEngine:
         self.mode = "forest"
         self.forest_depth = 1
         self.unlocked_rift_floor = 1
+        self.auto_rift = False
         self.active_rift: RiftRun | None = None
         self.treasure_mimics_defeated = 0
         self.market = Market()
@@ -178,7 +184,7 @@ class GameEngine:
         self._next_encounter_x = self.rng.uniform(42.0, 72.0)
         self.rift_decorations = []
         self._next_rift_decoration_index = 0
-        self._ensure_rift_scenery_until(760)
+        self._ensure_rift_scenery_until(SCENERY_CACHE_AHEAD + SCENE_CHUNK_WIDTH)
         self._add_event(
             "rift_enter",
             f"Entered floor {target_floor} {theme} rift.",
@@ -188,7 +194,18 @@ class GameEngine:
         )
         return self.active_rift
 
+    def set_auto_rift(self, enabled: bool) -> RiftRun | None:
+        self.auto_rift = bool(enabled)
+        if not self.auto_rift:
+            self._add_event("rift_auto_stop", "Auto rift stopped.")
+            return self.active_rift
+        self._add_event("rift_auto_start", "Auto rift started.", floor=self.unlocked_rift_floor)
+        if self.mode == "rift" and self.active_rift is not None and not self.active_rift.is_complete:
+            return self.active_rift
+        return self.enter_rift(self.unlocked_rift_floor)
+
     def leave_rift(self) -> None:
+        self.auto_rift = False
         if self.active_rift is None:
             return
         floor = self.active_rift.floor
@@ -443,19 +460,21 @@ class GameEngine:
     def snapshot(self) -> dict[str, Any]:
         camera_x = max(0.0, self.hero.x - 180.0)
         if self.mode == "rift" and self.active_rift is not None:
-            self._ensure_rift_scenery_until(camera_x + 900)
+            self._ensure_rift_scenery_until(camera_x + SCENERY_CACHE_AHEAD + SCENE_CHUNK_WIDTH)
+            self._trim_rift_scenery_cache(camera_x)
             nearby_decorations = [
                 decor
                 for decor in self.rift_decorations
-                if camera_x - 120 <= float(decor["x"]) <= camera_x + 980
+                if camera_x - 120 <= float(decor["x"]) <= camera_x + SCENERY_CACHE_AHEAD
             ]
             biome = self.active_rift.theme
         else:
-            self._ensure_scenery_until(camera_x + 900)
+            self._ensure_scenery_until(camera_x + SCENERY_CACHE_AHEAD + SCENE_CHUNK_WIDTH)
+            self._trim_scenery_cache(camera_x)
             nearby_decorations = [
                 decor
                 for decor in self.decorations
-                if camera_x - 120 <= float(decor["x"]) <= camera_x + 980
+                if camera_x - 120 <= float(decor["x"]) <= camera_x + SCENERY_CACHE_AHEAD
             ]
             biome = "deep_forest" if self.forest_depth > 1 else "forest"
         hero_weapon = self.hero.equipped.get(EquipmentSlot.WEAPON)
@@ -501,6 +520,7 @@ class GameEngine:
                     "id": self.active_monster.id,
                     "type": "monster",
                     "name": self.active_monster.kind,
+                    "kind": self.active_monster.kind,
                     "position": {
                         "x": round(self.active_monster.x, 2),
                         "y": round(self.active_monster.y, 2),
@@ -560,30 +580,60 @@ class GameEngine:
         self._advance_combat(dt)
 
     def _advance_forest_travel(self, dt: float) -> None:
-        self.hero.x += self.hero.move_speed * dt
-        self._heal_hero_over_time(self.hero.hp_regen, dt)
-        if self.hero.x >= self._next_encounter_x:
+        move_speed = self.hero.move_speed
+        if move_speed > 0 and self.hero.x + move_speed * dt >= self._next_encounter_x:
+            distance_to_encounter = max(0.0, self._next_encounter_x - self.hero.x)
+            travel_dt = min(dt, distance_to_encounter / move_speed)
+            if travel_dt > 0:
+                self.hero.x += move_speed * travel_dt
+                self._heal_hero_over_time(self.hero.hp_regen, travel_dt)
+            else:
+                self.hero.x = max(self.hero.x, self._next_encounter_x)
             self._spawn_monster()
+            remaining_dt = max(0.0, dt - travel_dt)
+            if remaining_dt > 0:
+                self._advance_combat(remaining_dt)
+            return
+
+        self.hero.x += move_speed * dt
+        self._heal_hero_over_time(self.hero.hp_regen, dt)
 
     def _advance_rift_travel(self, dt: float) -> None:
-        self.hero.x += self.hero.move_speed * dt
-        self._heal_hero_over_time(self.hero.hp_regen * 0.5, dt)
-        if self.hero.x >= self._next_encounter_x:
+        move_speed = self.hero.move_speed
+        if move_speed > 0 and self.hero.x + move_speed * dt >= self._next_encounter_x:
+            distance_to_encounter = max(0.0, self._next_encounter_x - self.hero.x)
+            travel_dt = min(dt, distance_to_encounter / move_speed)
+            if travel_dt > 0:
+                self.hero.x += move_speed * travel_dt
+                self._heal_hero_over_time(self.hero.hp_regen * 0.5, travel_dt)
+            else:
+                self.hero.x = max(self.hero.x, self._next_encounter_x)
             self._spawn_rift_monster()
+            remaining_dt = max(0.0, dt - travel_dt)
+            if remaining_dt > 0:
+                self._advance_combat(remaining_dt)
+            return
+
+        self.hero.x += move_speed * dt
+        self._heal_hero_over_time(self.hero.hp_regen * 0.5, dt)
 
     def _advance_combat(self, dt: float) -> None:
         if self.hero.hp <= 0 or self._revive_remaining > 0:
             return
         distance = self.active_monster.x - self.hero.x
         attack_range = self.hero.attack_range
+        entered_attack_range = False
         if distance > attack_range:
             move_distance = min(distance - attack_range, self.hero.move_speed * dt)
             self.hero.x += move_distance
             self._heal_hero_over_time(self.hero.hp_regen, dt)
             distance = self.active_monster.x - self.hero.x
+            entered_attack_range = distance <= attack_range
         if distance > attack_range:
             return
 
+        if entered_attack_range:
+            self._hero_attack_timer = max(self._hero_attack_timer, self.hero.attack_interval)
         self._hero_attack_timer += dt
         self._monster_attack_timer += dt
         if self._hero_attack_timer >= self.hero.attack_interval:
@@ -642,7 +692,7 @@ class GameEngine:
         self.active_monster = create_rift_monster(
             floor=self.active_rift.floor,
             theme=self.active_rift.theme,
-            x=self.hero.x + MONSTER_APPROACH_DISTANCE,
+            x=self.hero.x + RIFT_MONSTER_APPROACH_DISTANCE,
             y=HERO_GROUND_Y,
             rng=self.rng,
             boss=boss,
@@ -882,12 +932,19 @@ class GameEngine:
         )
         origin_x = self.active_rift.origin_x
         self._return_to_forest(origin_x)
+        if self.auto_rift:
+            self.enter_rift(self.unlocked_rift_floor)
 
     def _hero_defeated(self) -> None:
         if self._revive_remaining > 0:
             return
 
         monster_id = self.active_monster.id if self.active_monster else None
+        auto_rift_origin_x = (
+            self.active_rift.origin_x
+            if self.auto_rift and self.mode == "rift" and self.active_rift is not None
+            else None
+        )
         self.hero.hp = 0
         self._apply_death_gold_penalty(monster_id)
         self._revive_remaining = HERO_REVIVE_SECONDS
@@ -899,6 +956,12 @@ class GameEngine:
             monster_id=monster_id,
             revive_seconds=HERO_REVIVE_SECONDS,
         )
+        if auto_rift_origin_x is not None:
+            self.auto_rift = False
+            self._return_to_forest(auto_rift_origin_x)
+            self.hero.hp = 0
+            self._revive_remaining = HERO_REVIVE_SECONDS
+            self._add_event("rift_auto_stop", "Auto rift stopped after hero defeat.", monster_id=monster_id)
 
     def _apply_death_gold_penalty(self, monster_id: str | None) -> None:
         gold_before = self.hero.gold
@@ -997,6 +1060,20 @@ class GameEngine:
             )
             self._next_rift_decoration_index += 1
 
+    def _trim_scenery_cache(self, camera_x: float) -> None:
+        min_x = max(0.0, camera_x - SCENERY_CACHE_BACKTRACK)
+        max_x = camera_x + SCENERY_CACHE_AHEAD
+        self.decorations = [
+            decor for decor in self.decorations if min_x <= float(decor["x"]) <= max_x
+        ]
+
+    def _trim_rift_scenery_cache(self, camera_x: float) -> None:
+        min_x = max(0.0, camera_x - SCENERY_CACHE_BACKTRACK)
+        max_x = camera_x + SCENERY_CACHE_AHEAD
+        self.rift_decorations = [
+            decor for decor in self.rift_decorations if min_x <= float(decor["x"]) <= max_x
+        ]
+
     def _seed_market(self) -> None:
         sellers = ("npc_blacksmith", "npc_ranger", "npc_collector")
         for index, seller_id in enumerate(sellers):
@@ -1026,6 +1103,7 @@ class GameEngine:
         recommended_power = self._recommended_rift_power(self.unlocked_rift_floor)
         base = {
             "active": False,
+            "auto": self.auto_rift,
             "unlocked_floor": self.unlocked_rift_floor,
             "recommended_power": recommended_power,
             "hero_power": self._hero_power(),
@@ -1037,6 +1115,7 @@ class GameEngine:
         active.update(
             {
                 "unlocked_floor": self.unlocked_rift_floor,
+                "auto": self.auto_rift,
                 "recommended_power": self._recommended_rift_power(self.active_rift.floor),
                 "hero_power": self._hero_power(),
                 "available_themes": list(RIFT_THEMES),

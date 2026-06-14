@@ -54,11 +54,18 @@ const SETTINGS_STORAGE_KEY = 'idleForestSettings'
 const MAX_CHARACTER_SLOTS = 3
 const SIMULATION_STEP_SECONDS = 0.125
 const SIMULATION_TICK_MS = 125
+const MOBILE_SIMULATION_STEP_SECONDS = 0.5
+const MOBILE_SIMULATION_TICK_MS = 500
+const TICK_REQUEST_TIMEOUT_MS = 4000
+const NETWORK_RETRY_DELAY_MS = 180
+const DESKTOP_RENDER_FRAME_MS = 1000 / 60
+const MOBILE_RENDER_FRAME_MS = 1000 / 30
 const VISUAL_MAX_FRAME_DELTA_MS = 500
 const VISUAL_SNAP_DISTANCE = 96
 const WALK_PIXELS_PER_FRAME = 4
 const WALK_FRAME_SEQUENCE = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 const HERO_CAMERA_OFFSET = 180
+const RIFT_CAMERA_OFFSET = HERO_CAMERA_OFFSET
 const HERO_CAMERA_LEAD_SECONDS = 0.22
 const HERO_CAMERA_MAX_LEAD = 28
 const HERO_CAMERA_MAX_LAG = 42
@@ -68,7 +75,7 @@ const MONSTER_SPAWN_SCREEN_BUFFER = 820
 const COMBAT_VISUAL_RANGE_GRACE = 16
 const LOOT_FLOAT_DURATION_MS = 2400
 const ATTACK_EFFECT_DURATION_MS = 520
-const PIXEL_ASSET_VERSION = 'assassin-v58'
+const PIXEL_ASSET_VERSION = 'assassin-v82'
 const DEFAULT_SETTINGS = {
   paused: false,
   volume: 0.7,
@@ -101,6 +108,8 @@ const UI_TEXT = {
     recommendedPower: '推荐战力',
     normalIdle: '普通挂机',
     enterRift: '进入秘境',
+    autoRiftOn: '自动秘境中',
+    autoRiftOff: '自动秘境',
     leaveRift: '离开秘境',
     pushTen: '推进 10 秒',
     deepenForest: '深入森林',
@@ -194,6 +203,8 @@ const UI_TEXT = {
     recommendedPower: 'Recommended Power',
     normalIdle: 'Forest idle',
     enterRift: 'Enter Rift',
+    autoRiftOn: 'Auto Rift On',
+    autoRiftOff: 'Auto Rift',
     leaveRift: 'Leave Rift',
     pushTen: 'Advance 10s',
     deepenForest: 'Go Deeper',
@@ -341,9 +352,11 @@ const state = {
   assetsReady: false,
   stageReady: false,
   stageLoadToken: 0,
+  riftDebugEnabled: false,
   selectedGender: 'male',
   creationDraft: null,
   tickTimer: null,
+  tickCadenceKey: null,
   listingDraftItemId: null,
   listingDraftItem: null,
   inventoryRenderSignature: '',
@@ -359,11 +372,15 @@ const state = {
   recycleAllInFlight: false,
   talentEvolutionInFlight: false,
   lastRenderAt: 0,
+  lastPaintAt: 0,
   loadedAssets: 0,
   lootFloaters: [],
   seenLootEventKeys: new Set(),
   attackEffects: [],
   seenAttackEventKeys: new Set(),
+  monsterAttackEffects: [],
+  seenMonsterAttackEventKeys: new Set(),
+  riftTransition: null,
   visual: {
     entities: [],
     cameraX: 0,
@@ -419,6 +436,23 @@ const ASSET_PATHS = {
   pixelThorn: `/web/assets/pixel/v1/monsters/common/thorn.png?v=${PIXEL_ASSET_VERSION}`,
   pixelImp: `/web/assets/pixel/v1/monsters/common/imp.png?v=${PIXEL_ASSET_VERSION}`,
   pixelForestBoss: `/web/assets/pixel/v1/monsters/bosses/forest_boss.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterForestSlime: `/web/assets/pixel/v1/monsters/common/forest_slime.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterThornBoar: `/web/assets/pixel/v1/monsters/common/thorn_boar.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterMossImp: `/web/assets/pixel/v1/monsters/common/moss_imp.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterWildMushroom: `/web/assets/pixel/v1/monsters/common/wild_mushroom.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterBarkGuard: `/web/assets/pixel/v1/monsters/common/bark_guard.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterCaveBat: `/web/assets/pixel/v1/monsters/common/cave_bat.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterCrystalLurker: `/web/assets/pixel/v1/monsters/common/crystal_lurker.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterStoneCrawler: `/web/assets/pixel/v1/monsters/common/stone_crawler.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterCloudWisp: `/web/assets/pixel/v1/monsters/common/cloud_wisp.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterStormHarpy: `/web/assets/pixel/v1/monsters/common/storm_harpy.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterSunMote: `/web/assets/pixel/v1/monsters/common/sun_mote.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterRustGuard: `/web/assets/pixel/v1/monsters/common/rust_guard.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterHollowKnight: `/web/assets/pixel/v1/monsters/common/hollow_knight.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterCursedSquire: `/web/assets/pixel/v1/monsters/common/cursed_squire.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterCaveWarden: `/web/assets/pixel/v1/monsters/bosses/cave_warden.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterTempestSeraph: `/web/assets/pixel/v1/monsters/bosses/tempest_seraph.png?v=${PIXEL_ASSET_VERSION}`,
+  pixelMonsterThroneKeeper: `/web/assets/pixel/v1/monsters/bosses/throne_keeper.png?v=${PIXEL_ASSET_VERSION}`,
   pixelBackgroundForest: `/web/assets/pixel/v1/maps/background_forest.png?v=${PIXEL_ASSET_VERSION}`,
   pixelBackgroundDeepForest: `/web/assets/pixel/v1/maps/background_deep_forest.png?v=${PIXEL_ASSET_VERSION}`,
   equipmentWoodenBlade: `/web/assets/pixel/v1/equipment/wooden_blade.png?v=${PIXEL_ASSET_VERSION}`,
@@ -449,6 +483,24 @@ const ASSET_PATHS = {
   talentRiftEffect: `/web/assets/pixel/v1/effects/talent_rift.png?v=${PIXEL_ASSET_VERSION}`,
   equipmentEnchantEffect: `/web/assets/pixel/v1/effects/equipment_enchant.png?v=${PIXEL_ASSET_VERSION}`
 }
+
+const RIFT_BACKGROUND_PRELOAD_ASSET_KEYS = [
+  'bgCave',
+  'bgCastle',
+  'bgSky',
+  'bgClouds',
+  'groundStone',
+  'blockStone',
+  'brickGrey'
+]
+
+const RIFT_COMBAT_PRELOAD_ASSET_KEYS = [
+  'pixelSlime',
+  'pixelThorn',
+  'pixelImp',
+  'pixelForestBoss',
+  'talentRiftEffect'
+]
 
 const EQUIPMENT_MODEL_ASSET_KEYS = {
   wooden_blade: 'equipmentWoodenBlade',
@@ -646,12 +698,174 @@ const PIXEL_SPRITES = {
       drawWidth: 126,
       drawHeight: 126,
       actions: PIXEL_MONSTER_ACTIONS
+    },
+    forest_slime: {
+      key: 'pixelMonsterForestSlime',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 70,
+      drawHeight: 70,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    thorn_boar: {
+      key: 'pixelMonsterThornBoar',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 78,
+      drawHeight: 74,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    moss_imp: {
+      key: 'pixelMonsterMossImp',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 72,
+      drawHeight: 72,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    wild_mushroom: {
+      key: 'pixelMonsterWildMushroom',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 74,
+      drawHeight: 74,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    bark_guard: {
+      key: 'pixelMonsterBarkGuard',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 82,
+      drawHeight: 82,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    cave_bat: {
+      key: 'pixelMonsterCaveBat',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 70,
+      drawHeight: 70,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    crystal_lurker: {
+      key: 'pixelMonsterCrystalLurker',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 76,
+      drawHeight: 76,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    stone_crawler: {
+      key: 'pixelMonsterStoneCrawler',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 78,
+      drawHeight: 72,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    cloud_wisp: {
+      key: 'pixelMonsterCloudWisp',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 70,
+      drawHeight: 70,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    storm_harpy: {
+      key: 'pixelMonsterStormHarpy',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 80,
+      drawHeight: 80,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    sun_mote: {
+      key: 'pixelMonsterSunMote',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 70,
+      drawHeight: 70,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    rust_guard: {
+      key: 'pixelMonsterRustGuard',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 78,
+      drawHeight: 78,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    hollow_knight: {
+      key: 'pixelMonsterHollowKnight',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 80,
+      drawHeight: 80,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    cursed_squire: {
+      key: 'pixelMonsterCursedSquire',
+      frameWidth: 64,
+      frameHeight: 64,
+      drawWidth: 76,
+      drawHeight: 76,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    cave_warden: {
+      key: 'pixelMonsterCaveWarden',
+      frameWidth: 128,
+      frameHeight: 128,
+      drawWidth: 148,
+      drawHeight: 148,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    tempest_seraph: {
+      key: 'pixelMonsterTempestSeraph',
+      frameWidth: 128,
+      frameHeight: 128,
+      drawWidth: 152,
+      drawHeight: 152,
+      actions: PIXEL_MONSTER_ACTIONS
+    },
+    throne_keeper: {
+      key: 'pixelMonsterThroneKeeper',
+      frameWidth: 128,
+      frameHeight: 128,
+      drawWidth: 150,
+      drawHeight: 150,
+      actions: PIXEL_MONSTER_ACTIONS
     }
   }
 }
 
+const MONSTER_KIND_SPRITES = {
+  forest_slime: 'forest_slime',
+  thorn_boar: 'thorn_boar',
+  moss_imp: 'moss_imp',
+  wild_mushroom: 'wild_mushroom',
+  bark_guard: 'bark_guard',
+  shadow_slime: 'forest_slime',
+  bramble_wolf: 'thorn_boar',
+  gloom_imp: 'moss_imp',
+  venom_mushroom: 'wild_mushroom',
+  ancient_bark_guard: 'bark_guard',
+  cave_bat: 'cave_bat',
+  crystal_lurker: 'crystal_lurker',
+  stone_crawler: 'stone_crawler',
+  cloud_wisp: 'cloud_wisp',
+  storm_harpy: 'storm_harpy',
+  sun_mote: 'sun_mote',
+  rust_guard: 'rust_guard',
+  hollow_knight: 'hollow_knight',
+  cursed_squire: 'cursed_squire',
+  cave_warden: 'cave_warden',
+  tempest_seraph: 'tempest_seraph',
+  throne_keeper: 'throne_keeper'
+}
+
 const assetImages = {}
 const assetLoadPromises = {}
+const assetDecodePromises = {}
 
 Object.entries(ASSET_PATHS).forEach(([key, path]) => {
   const image = new Image()
@@ -666,6 +880,36 @@ Object.entries(ASSET_PATHS).forEach(([key, path]) => {
   image.src = path
   assetImages[key] = image
 })
+
+function decodeAssetImage(key) {
+  if (!assetDecodePromises[key]) {
+    assetDecodePromises[key] = (assetLoadPromises[key] || Promise.resolve())
+      .then(() => {
+        const image = assetImages[key]
+        if (!image || image.naturalWidth <= 0) {
+          return null
+        }
+        return image.decode ? image.decode().catch(() => null) : Promise.resolve(null)
+      })
+  }
+  return assetDecodePromises[key]
+}
+
+function warmAssetKeys(keys) {
+  return Promise.allSettled(Array.from(new Set(keys)).map((key) => decodeAssetImage(key)))
+}
+
+function warmRiftAssets() {
+  return warmAssetKeys([
+    ...RIFT_BACKGROUND_PRELOAD_ASSET_KEYS,
+    ...RIFT_COMBAT_PRELOAD_ASSET_KEYS
+  ])
+}
+
+function scheduleRiftAssetWarmup() {
+  const schedule = window.requestIdleCallback || ((callback) => window.setTimeout(callback, 250))
+  schedule(() => warmRiftAssets())
+}
 
 const canvas = document.querySelector('#gameCanvas')
 const ctx = canvas.getContext('2d')
@@ -686,6 +930,7 @@ const els = {
   modeText: document.querySelector('#modeText'),
   riftStateText: document.querySelector('#riftStateText'),
   enterRiftButton: document.querySelector('#enterRiftButton'),
+  autoRiftButton: document.querySelector('#autoRiftButton'),
   leaveRiftButton: document.querySelector('#leaveRiftButton'),
   reviveText: document.querySelector('#reviveText'),
   tickButton: document.querySelector('#tickButton'),
@@ -729,6 +974,8 @@ const els = {
   profileGate: document.querySelector('#profileGate'),
   stageLoading: document.querySelector('#stageLoading'),
   stageLoadingText: document.querySelector('#stageLoadingText'),
+  riftDebugPanel: document.querySelector('#riftDebugPanel'),
+  riftDebugText: document.querySelector('#riftDebugText'),
   accountPanel: document.querySelector('#accountPanel'),
   accountUsernameInput: document.querySelector('#accountUsernameInput'),
   accountPasswordInput: document.querySelector('#accountPasswordInput'),
@@ -752,6 +999,32 @@ const els = {
   profileStatusText: document.querySelector('#profileStatusText')
 }
 
+function isReadRequest(options = {}) {
+  return String(options.method || 'GET').toUpperCase() === 'GET'
+}
+
+function isTransientFetchError(error) {
+  const message = String(error && error.message || '').toLowerCase()
+  return Boolean(
+    error && (
+      error.name === 'TypeError' ||
+      error.name === 'NetworkError' ||
+      message.includes('failed to fetch') ||
+      message.includes('networkerror')
+    )
+  )
+}
+
+function fetchWithNetworkRetry(path, request, options) {
+  return fetch(path, request).catch((error) => {
+    if (!isReadRequest(options) || !isTransientFetchError(error)) {
+      throw error
+    }
+    return new Promise((resolve) => window.setTimeout(resolve, NETWORK_RETRY_DELAY_MS))
+      .then(() => fetch(path, request))
+  })
+}
+
 function api(path, options = {}) {
   const headers = {
     'content-type': 'application/json'
@@ -760,17 +1033,27 @@ function api(path, options = {}) {
   if (token) {
     headers['X-Session-Token'] = token
   }
-  return fetch(path, {
+  const controller = options.timeoutMs ? new AbortController() : null
+  const timeoutId = controller
+    ? window.setTimeout(() => controller.abort(), options.timeoutMs)
+    : null
+  const request = {
     method: options.method || 'GET',
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined
-  }).then(async (response) => {
-    const data = await response.json()
-    if (!response.ok) {
-      throw new Error(data.error || `HTTP ${response.status}`)
-    }
-    return data
-  })
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: controller ? controller.signal : undefined
+  }
+  return fetchWithNetworkRetry(path, request, options)
+    .then(async (response) => {
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`)
+      }
+      return data
+    })
+    .finally(() => {
+      timeoutId && window.clearTimeout(timeoutId)
+    })
 }
 
 function resizeCanvas() {
@@ -779,6 +1062,12 @@ function resizeCanvas() {
   canvas.width = Math.round(rect.width * dpr)
   canvas.height = Math.round(rect.height * dpr)
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+}
+
+function handleViewportRuntimeChange() {
+  resizeCanvas()
+  state.lastPaintAt = 0
+  syncSimulationTimer()
 }
 
 function currentLanguage() {
@@ -937,6 +1226,8 @@ function togglePause(paused) {
   state.settings.paused = Boolean(paused)
   if (state.settings.paused) {
     state.tickQueuedSeconds = 0
+  } else {
+    syncSimulationTimer()
   }
   saveSettings()
   applySettings()
@@ -1011,6 +1302,18 @@ function setStatus(text, online = true) {
   els.statusText.style.color = online ? '#9fb0a6' : '#ff9f7f'
 }
 
+function userFacingErrorMessage(error, fallbackKey = 'actionFail') {
+  const message = String(error && error.message || '').toLowerCase()
+  if (
+    message.includes('failed to fetch') ||
+    message.includes('networkerror') ||
+    message.includes('abort')
+  ) {
+    return t(fallbackKey)
+  }
+  return (error && error.message) || t(fallbackKey)
+}
+
 function statusForSnapshot(snapshot) {
   if (snapshot && snapshot.hero && snapshot.hero.reviving) {
     return `${t('reviveIn')} ${Math.ceil(Number(snapshot.hero.revive_remaining || 0))} ${t('seconds')}`
@@ -1022,6 +1325,76 @@ function statusForSnapshot(snapshot) {
   return depth > 1 ? `${t('deepForest')} ${depth}` : t('idle')
 }
 
+function nowMs() {
+  return Math.round(performance.now())
+}
+
+function updateRiftTransitionDurations(trace) {
+  if (!trace) {
+    return
+  }
+  trace.durations = {
+    requestStartMs: trace.requestStartAt == null ? null : trace.requestStartAt - trace.startedAt,
+    responseReceivedMs: trace.responseReceivedAt == null ? null : trace.responseReceivedAt - trace.startedAt,
+    snapshotAppliedMs: trace.snapshotAppliedAt == null ? null : trace.snapshotAppliedAt - trace.startedAt,
+    firstVisualHeroMoveMs: trace.firstVisualHeroMoveAt == null ? null : trace.firstVisualHeroMoveAt - trace.startedAt,
+    firstVisualCameraMoveMs: trace.firstVisualCameraMoveAt == null ? null : trace.firstVisualCameraMoveAt - trace.startedAt,
+    visualReadyMs: trace.visualReadyAt == null ? null : trace.visualReadyAt - trace.startedAt
+  }
+}
+
+function startRiftTransitionTrace(action) {
+  const startedAt = nowMs()
+  state.riftTransition = {
+    action,
+    startedAt,
+    requestStartAt: null,
+    responseReceivedAt: null,
+    snapshotAppliedAt: null,
+    firstVisualHeroMoveAt: null,
+    firstVisualCameraMoveAt: null,
+    visualReadyAt: null,
+    initialVisualHeroX: null,
+    initialVisualCameraX: null,
+    durations: {}
+  }
+  updateRiftTransitionDurations(state.riftTransition)
+}
+
+function markRiftTransitionTrace(stage) {
+  const trace = state.riftTransition
+  if (!trace) {
+    return
+  }
+  const time = nowMs()
+  if (stage === 'request-start') {
+    trace.requestStartAt = trace.requestStartAt == null ? time : trace.requestStartAt
+  }
+  if (stage === 'response-received') {
+    trace.responseReceivedAt = trace.responseReceivedAt == null ? time : trace.responseReceivedAt
+  }
+  if (stage === 'snapshot-applied') {
+    trace.snapshotAppliedAt = trace.snapshotAppliedAt == null ? time : trace.snapshotAppliedAt
+  }
+  updateRiftTransitionDurations(trace)
+}
+
+function finishRiftTransitionTrace(stage) {
+  const trace = state.riftTransition
+  if (!trace) {
+    return
+  }
+  const time = nowMs()
+  if (stage === 'visual-ready') {
+    trace.visualReadyAt = trace.visualReadyAt == null ? time : trace.visualReadyAt
+  }
+  updateRiftTransitionDurations(trace)
+}
+
+function tracingRiftAction(path) {
+  return Boolean(state.riftTransition && (path === '/rift/enter' || path === '/rift/auto'))
+}
+
 function refresh() {
   return api('/snapshot')
     .then((snapshot) => {
@@ -1029,8 +1402,73 @@ function refresh() {
       setStatus(statusForSnapshot(snapshot))
     })
     .catch((error) => {
-      setStatus(error.message || t('actionFail'), false)
+      setStatus(userFacingErrorMessage(error), false)
     })
+}
+
+function isMobileRuntime() {
+  const coarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches
+  const touchPoints = typeof navigator === 'undefined' ? 0 : Number(navigator.maxTouchPoints || 0)
+  return Boolean(coarsePointer || touchPoints > 0)
+}
+
+function simulationStepSeconds() {
+  return isMobileRuntime() ? MOBILE_SIMULATION_STEP_SECONDS : SIMULATION_STEP_SECONDS
+}
+
+function simulationTickMs() {
+  if (document.hidden) {
+    return 1000
+  }
+  return isMobileRuntime() ? MOBILE_SIMULATION_TICK_MS : SIMULATION_TICK_MS
+}
+
+function simulationCadenceKey() {
+  const visibility = document.hidden ? 'hidden' : 'visible'
+  return `${isMobileRuntime() ? 'mobile' : 'desktop'}:${visibility}`
+}
+
+function simulationCadence() {
+  return {
+    key: simulationCadenceKey(),
+    stepSeconds: simulationStepSeconds(),
+    tickMs: simulationTickMs()
+  }
+}
+
+function syncSimulationTimer(force = false) {
+  if (!state.gameReady || state.settings.paused) {
+    return
+  }
+  const cadence = simulationCadence()
+  if (!force && state.tickTimer && state.tickCadenceKey === cadence.key) {
+    return
+  }
+  if (state.tickTimer) {
+    window.clearInterval(state.tickTimer)
+  }
+  state.tickCadenceKey = cadence.key
+  state.tickTimer = window.setInterval(() => tick(cadence.stepSeconds), cadence.tickMs)
+}
+
+function renderFrameBudgetMs() {
+  if (document.hidden) {
+    return 1000
+  }
+  return isMobileRuntime() ? MOBILE_RENDER_FRAME_MS : DESKTOP_RENDER_FRAME_MS
+}
+
+function shouldThrottleRenderFrame(timestamp) {
+  const budget = renderFrameBudgetMs()
+  if (!state.lastPaintAt) {
+    state.lastPaintAt = timestamp
+    return false
+  }
+  if (timestamp - state.lastPaintAt < budget) {
+    return true
+  }
+  state.lastPaintAt = timestamp
+  return false
 }
 
 function tick(seconds = 1) {
@@ -1044,14 +1482,15 @@ function tick(seconds = 1) {
   state.tickInFlight = true
   return api('/tick', {
     method: 'POST',
-    body: { seconds }
+    body: { seconds },
+    timeoutMs: TICK_REQUEST_TIMEOUT_MS
   })
     .then((snapshot) => {
       applySnapshot(snapshot)
       setStatus(statusForSnapshot(snapshot))
     })
     .catch((error) => {
-      setStatus(error.message || t('actionFail'), false)
+      setStatus(userFacingErrorMessage(error), false)
     })
     .finally(() => {
       state.tickInFlight = false
@@ -1063,18 +1502,30 @@ function tick(seconds = 1) {
     })
 }
 
-function postAction(path, body, statusText) {
+function postAction(path, body, statusText, options = {}) {
+  if (tracingRiftAction(path)) {
+    markRiftTransitionTrace('request-start')
+  }
   return api(path, {
     method: 'POST',
     body
   })
     .then((result) => {
+      if (tracingRiftAction(path)) {
+        markRiftTransitionTrace('response-received')
+      }
       const snapshot = result.snapshot || result
+      if (options.prepareStageAssets) {
+        beginStageAssetTransition(snapshot)
+      }
       applySnapshot(snapshot)
+      if (tracingRiftAction(path)) {
+        markRiftTransitionTrace('snapshot-applied')
+      }
       setStatus(snapshot.hero && snapshot.hero.reviving ? statusForSnapshot(snapshot) : statusText)
     })
     .catch((error) => {
-      setStatus(error.message || t('actionFail'), false)
+      setStatus(userFacingErrorMessage(error), false)
     })
 }
 
@@ -1149,6 +1600,16 @@ function updateStageLoading() {
   setStageLoading(!state.stageReady)
 }
 
+function beginStageAssetTransition(snapshot) {
+  state.assetsReady = false
+  state.stageReady = false
+  state.stageLoadToken += 1
+  const token = state.stageLoadToken
+  updateStageLoading()
+  waitForStageAssets(snapshot, token)
+  return token
+}
+
 function stageAssetKeysForSnapshot(snapshot) {
   const hero = snapshot && snapshot.hero
   const gender = hero && hero.gender
@@ -1173,7 +1634,7 @@ function stageAssetKeysForSnapshot(snapshot) {
 
 function waitForStageAssets(snapshot, token) {
   return Promise.allSettled(
-    stageAssetKeysForSnapshot(snapshot).map((key) => assetLoadPromises[key]).filter(Boolean)
+    stageAssetKeysForSnapshot(snapshot).map((key) => decodeAssetImage(key)).filter(Boolean)
   ).then(() => {
     if (state.stageLoadToken !== token) {
       return
@@ -1315,7 +1776,7 @@ function rollCreationTalents() {
       setProfileStatus(t('rolled'))
     })
     .catch((error) => {
-      setProfileStatus(error.message || t('rollFail'), false)
+      setProfileStatus(userFacingErrorMessage(error, 'rollFail'), false)
       els.rollTalentButton.disabled = false
     })
 }
@@ -1347,7 +1808,7 @@ function confirmCharacter() {
       setStatus(t('createSuccess'))
     })
     .catch((error) => {
-      setProfileStatus(error.message || t('createFail'), false)
+      setProfileStatus(userFacingErrorMessage(error, 'createFail'), false)
       els.confirmCharacterButton.disabled = false
     })
 }
@@ -1374,9 +1835,7 @@ function startGame(snapshot) {
     state.assetsReady = true
     updateStageLoading()
   }
-  if (!state.tickTimer) {
-    state.tickTimer = window.setInterval(() => tick(SIMULATION_STEP_SECONDS), SIMULATION_TICK_MS)
-  }
+  syncSimulationTimer(true)
 }
 
 function stopGameLoop() {
@@ -1388,6 +1847,7 @@ function stopGameLoop() {
     window.clearInterval(state.tickTimer)
     state.tickTimer = null
   }
+  state.tickCadenceKey = null
   resetVisualSmoothing()
 }
 
@@ -1402,7 +1862,10 @@ function resetVisualSmoothing() {
   state.seenLootEventKeys = new Set()
   state.attackEffects = []
   state.seenAttackEventKeys = new Set()
+  state.monsterAttackEffects = []
+  state.seenMonsterAttackEventKeys = new Set()
   state.lastRenderAt = 0
+  state.lastPaintAt = 0
 }
 
 function submitAccount(path) {
@@ -1439,7 +1902,7 @@ function submitAccount(path) {
     })
     .catch((error) => {
       clearSessionToken()
-      setAccountStatus(error.message || t('actionFail'), false)
+      setAccountStatus(userFacingErrorMessage(error), false)
     })
     .finally(() => {
       els.loginButton.disabled = false
@@ -1471,7 +1934,7 @@ function selectCharacter(characterId) {
       setStatus(t('connected'))
     })
     .catch((error) => {
-      setAccountStatus(error.message || t('actionFail'), false)
+      setAccountStatus(userFacingErrorMessage(error), false)
     })
 }
 
@@ -1492,7 +1955,7 @@ function deleteCharacter(characterId) {
       setAccountStatus(currentLanguage() === 'zh-CN' ? '角色已删除' : 'Hero deleted')
     })
     .catch((error) => {
-      setAccountStatus(error.message || t('actionFail'), false)
+      setAccountStatus(userFacingErrorMessage(error), false)
     })
 }
 
@@ -1531,24 +1994,57 @@ function bootstrapProfile() {
     .catch((error) => {
       clearSessionToken()
       showAccountPanel()
-      setAccountStatus(error.message || t('profileInvalid'), false)
+      setAccountStatus(userFacingErrorMessage(error, 'profileInvalid'), false)
       setStatus(t('waitingCreate'), false)
     })
 }
 
+function riftRunKey(snapshot) {
+  const rift = snapshot && snapshot.rift
+  if (!rift || !rift.active) {
+    return ''
+  }
+  return `${rift.floor || 0}:${rift.theme || ''}:${rift.started_tick || 0}`
+}
+
+function shouldResetVisualForSnapshot(previousSnapshot, nextSnapshot) {
+  const previousMode = previousSnapshot && previousSnapshot.mode
+  const nextMode = nextSnapshot && nextSnapshot.mode
+  if (previousMode && nextMode && previousMode !== nextMode) {
+    return true
+  }
+  const previousRiftRun = riftRunKey(previousSnapshot)
+  const nextRiftRun = riftRunKey(nextSnapshot)
+  return Boolean(previousRiftRun && nextRiftRun && previousRiftRun !== nextRiftRun)
+}
+
 function applySnapshot(snapshot) {
+  const shouldResetVisual = shouldResetVisualForSnapshot(state.snapshot, snapshot)
   state.previousSnapshot = state.snapshot
   state.snapshot = snapshot
+  if (shouldResetVisual) {
+    resetVisualSmoothing()
+  }
   snapVisualStateToSnapshot(snapshot)
+  if (state.riftTransition && snapshot && snapshot.mode === 'rift') {
+    const visualHero = (state.visual.entities || []).find((entity) => entity.type === 'hero')
+    state.riftTransition.initialVisualHeroX = visualHero && visualHero.position
+      ? Number(Number(visualHero.position.x || 0).toFixed(2))
+      : null
+    state.riftTransition.initialVisualCameraX = Number(Number(state.visual.cameraX || 0).toFixed(2))
+    updateRiftTransitionDurations(state.riftTransition)
+  }
   updateStageLoading()
   trackLootFloaters(snapshot.events || [], snapshot.scene)
   trackAttackEffects(snapshot.events || [], snapshot.scene)
+  trackMonsterAttackEffects(snapshot.events || [], snapshot.scene)
   const hero = snapshot.hero
   const rift = snapshot.rift
   const treasure = snapshot.treasure || {}
   const forest = snapshot.forest || {}
   const forestDepth = Number(forest.depth || (snapshot.scene && snapshot.scene.forest_depth) || 1)
   const active = rift.active
+  const autoRift = Boolean(rift.auto)
   const minionsRequired = active ? rift.minions_required : 0
   const minionsDefeated = active ? rift.minions_defeated : 0
   const progress = active
@@ -1570,6 +2066,9 @@ function applySnapshot(snapshot) {
   els.riftStateText.textContent = describeRiftState(rift, forest, snapshot.mode)
   els.enterRiftButton.disabled = active
   els.enterRiftButton.textContent = `${t('enterRift')} ${rift.unlocked_floor}`
+  els.autoRiftButton.disabled = Boolean(hero.reviving)
+  els.autoRiftButton.textContent = autoRift ? t('autoRiftOn') : t('autoRiftOff')
+  els.autoRiftButton.classList.toggle('active', autoRift)
   els.leaveRiftButton.disabled = !active
   els.leaveRiftButton.textContent = t('leaveRift')
   els.deepenForestButton.disabled = active
@@ -2137,6 +2636,38 @@ function trackAttackEffects(events, scene) {
   }
 }
 
+function trackMonsterAttackEffects(events = [], scene = null) {
+  if (!scene || !Array.isArray(events)) {
+    return
+  }
+  const monster = (scene.entities || []).find((entity) => entity.type === 'monster')
+  if (!monster || !monster.position) {
+    return
+  }
+  events.forEach((event) => {
+    if (event.kind !== 'monster_attack') {
+      return
+    }
+    const key = attackEventKey(event)
+    if (state.seenMonsterAttackEventKeys.has(key)) {
+      return
+    }
+    state.seenMonsterAttackEventKeys.add(key)
+    const data = event.data || {}
+    state.monsterAttackEffects.push({
+      key,
+      monsterId: data.monster_id || monster.id || '',
+      x: Number(monster.position.x || 0),
+      y: Number(monster.position.y || 0),
+      damage: data.damage || 0,
+      createdAt: state.lastRenderAt || window.performance.now()
+    })
+  })
+  if (state.seenMonsterAttackEventKeys.size > 260) {
+    state.seenMonsterAttackEventKeys = new Set(Array.from(state.seenMonsterAttackEventKeys).slice(-180))
+  }
+}
+
 function attackEventKey(event) {
   const data = event.data || {}
   return `${event.tick}:${event.kind}:${data.monster_id || ''}:${data.damage || 0}`
@@ -2629,8 +3160,12 @@ function spawnVisualPosition(entity, snapshot, currentEntities) {
   }
 }
 
-function transitioningIntoCombatRange(current, next) {
+function transitioningIntoCombatRange(current, next, currentEntities = []) {
   if (!current || !next || next.type !== 'hero' || next.state !== 'combat' || !movingEntity(current)) {
+    return false
+  }
+  const currentMonster = currentEntities.find((candidate) => candidate.type === 'monster' && candidate.position)
+  if (visibleMonsterWithinAttackRange(current, currentMonster)) {
     return false
   }
   const currentX = Number(current.position && current.position.x)
@@ -2706,7 +3241,7 @@ function snapVisualStateToSnapshot(snapshot) {
     }
     const currentX = Number(current.position.x || 0)
     const nextX = Number(next.position.x || 0)
-    if (transitioningIntoCombatRange(current, next)) {
+    if (transitioningIntoCombatRange(current, next, currentEntities)) {
       next.position.x = currentX
       next.position.y = Number(current.position.y || next.position.y || 0)
       next.visualCombatApproach = true
@@ -2736,27 +3271,35 @@ function snapVisualStateToSnapshot(snapshot) {
   }
 }
 
-function syncCameraToHeroBounds(cameraX, heroX) {
+function cameraFollowOffset() {
+  if (state.snapshot && state.snapshot.mode === 'rift') {
+    return RIFT_CAMERA_OFFSET
+  }
+  return HERO_CAMERA_OFFSET
+}
+
+function syncCameraToHeroBounds(cameraX, heroX, followOffset = HERO_CAMERA_OFFSET) {
   const nextCameraX = Math.max(0, Number(cameraX || 0))
   if (!Number.isFinite(heroX)) {
     return nextCameraX
   }
-  const center = Math.max(0, heroX - HERO_CAMERA_OFFSET)
+  const center = Math.max(0, heroX - followOffset)
   const minCameraX = Math.max(0, center - HERO_CAMERA_MAX_LAG)
   const maxCameraX = Math.max(0, center + HERO_CAMERA_MAX_LEAD)
   return Math.max(minCameraX, Math.min(maxCameraX, nextCameraX))
 }
 
 function visualCameraTarget(hero, speed, seconds, visualStep = null) {
-  const snapshotTargetX = Math.max(0, Number(hero && hero.visualTarget && hero.visualTarget.x || 0) - HERO_CAMERA_OFFSET)
+  const followOffset = cameraFollowOffset()
+  const snapshotTargetX = Math.max(0, Number(hero && hero.visualTarget && hero.visualTarget.x || 0) - followOffset)
   const heroX = Number(hero && hero.position && hero.position.x || 0)
   if (movingEntity(hero) && Number.isFinite(speed) && speed > 0) {
     const fallbackCameraStep = speed * Math.max(0, seconds)
     const cameraStep = Number.isFinite(visualStep) ? Math.max(0, Number(visualStep)) : fallbackCameraStep
     const nextCameraX = state.visual.cameraX + cameraStep
-    return syncCameraToHeroBounds(nextCameraX, heroX)
+    return syncCameraToHeroBounds(nextCameraX, heroX, followOffset)
   }
-  return Math.max(0, Number.isFinite(heroX) ? heroX - HERO_CAMERA_OFFSET : snapshotTargetX)
+  return Math.max(0, Number.isFinite(heroX) ? heroX - followOffset : snapshotTargetX)
 }
 
 function advanceMovingVisualCamera(cameraTargetX) {
@@ -2802,6 +3345,14 @@ function advanceVisualState(seconds) {
       const previousX = Number(hero.position.x || 0)
       hero.position.x = Number(nextX.toFixed(3))
       heroVisualStep = Math.max(0, hero.position.x - previousX)
+      if (
+        state.riftTransition &&
+        state.riftTransition.firstVisualHeroMoveAt == null &&
+        heroVisualStep > 0.01
+      ) {
+        state.riftTransition.firstVisualHeroMoveAt = nowMs()
+        updateRiftTransitionDurations(state.riftTransition)
+      }
       accumulateWalkDistance(hero, previousX, hero.position.x)
     }
   }
@@ -2822,11 +3373,28 @@ function advanceVisualState(seconds) {
     accumulateWalkDistance(entity, currentX, entity.position.x)
   }
   clearVisualCombatApproach(hero, monster)
+  const previousCameraX = Number(state.visual.cameraX || 0)
   const cameraTargetX = visualCameraTarget(hero, speed, seconds, heroVisualStep)
   if (movingEntity(hero)) {
     advanceMovingVisualCamera(cameraTargetX)
   } else {
     advanceRestingVisualCamera(cameraTargetX, seconds)
+  }
+  if (
+    state.riftTransition &&
+    state.riftTransition.firstVisualCameraMoveAt == null &&
+    Math.abs(Number(state.visual.cameraX || 0) - previousCameraX) > 0.01
+  ) {
+    state.riftTransition.firstVisualCameraMoveAt = nowMs()
+    updateRiftTransitionDurations(state.riftTransition)
+  }
+  if (
+    state.riftTransition &&
+    state.riftTransition.firstVisualHeroMoveAt != null &&
+    state.riftTransition.firstVisualCameraMoveAt != null &&
+    state.riftTransition.visualReadyAt == null
+  ) {
+    finishRiftTransitionTrace('visual-ready')
   }
 }
 
@@ -2873,6 +3441,16 @@ window.__idleForestDebug = function idleForestDebug() {
   const visualMonsterX = visualMonster && visualMonster.position ? Number(Number(visualMonster.position.x || 0).toFixed(2)) : null
   const snapshotHeroX = snapshotHero && snapshotHero.position ? Number(Number(snapshotHero.position.x || 0).toFixed(2)) : null
   const snapshotMonsterX = snapshotMonster && snapshotMonster.position ? Number(Number(snapshotMonster.position.x || 0).toFixed(2)) : null
+  const visualCameraX = Number(Number(state.visual.cameraX || 0).toFixed(2))
+  const snapshotCameraX = state.snapshot && state.snapshot.scene && state.snapshot.scene.camera
+    ? Number(Number(state.snapshot.scene.camera.x || 0).toFixed(2))
+    : 0
+  const debugRect = canvas.getBoundingClientRect()
+  const debugWorldScale = Math.max(0.78, Math.min(1.32, debugRect.width / 720))
+  const visualHeroScreenX = visualHeroX == null ? null : Number(worldX(visualHeroX, visualCameraX, debugWorldScale).toFixed(2))
+  const visualMonsterScreenX = visualMonsterX == null ? null : Number(worldX(visualMonsterX, visualCameraX, debugWorldScale).toFixed(2))
+  const snapshotHeroScreenX = snapshotHeroX == null ? null : Number(worldX(snapshotHeroX, snapshotCameraX, debugWorldScale).toFixed(2))
+  const snapshotMonsterScreenX = snapshotMonsterX == null ? null : Number(worldX(snapshotMonsterX, snapshotCameraX, debugWorldScale).toFixed(2))
   return {
     gameReady: state.gameReady,
     tickInFlight: state.tickInFlight,
@@ -2886,13 +3464,27 @@ window.__idleForestDebug = function idleForestDebug() {
     snapshotDistance,
     visualHeroState: visualHero && visualHero.state,
     visualHeroX,
+    visualCameraX,
     visualMonsterX,
+    visualHeroScreenX,
+    visualMonsterScreenX,
+    visualScreenDistance: visualHeroScreenX != null && visualMonsterScreenX != null
+      ? Number((visualMonsterScreenX - visualHeroScreenX).toFixed(2))
+      : null,
+    snapshotHeroScreenX,
+    snapshotMonsterScreenX,
+    snapshotScreenDistance: snapshotHeroScreenX != null && snapshotMonsterScreenX != null
+      ? Number((snapshotMonsterScreenX - snapshotHeroScreenX).toFixed(2))
+      : null,
+    worldScale: Number(debugWorldScale.toFixed(3)),
     visualCombatApproach: Boolean(visualHero && visualHero.visualCombatApproach),
     visualDistance,
     visualSpeed: visualHero && visualHero.speed,
     attackRange: visualHero && visualHero.attack_range,
     combatVisualGrace: visualHero ? combatVisualRangeGrace(visualHero) : null,
+    riftTransition: state.riftTransition,
     attackEffects: state.attackEffects.length,
+    monsterAttackEffects: state.monsterAttackEffects.length,
     lastRenderAt: state.lastRenderAt
   }
 }
@@ -2901,7 +3493,38 @@ function updateIdleForestDebugDataset() {
   if (!document || !document.documentElement || !window.__idleForestDebug) {
     return
   }
-  document.documentElement.dataset.idleDebug = JSON.stringify(window.__idleForestDebug())
+  const debug = window.__idleForestDebug()
+  document.documentElement.dataset.idleDebug = JSON.stringify(debug)
+  updateRiftDebugPanel(debug)
+}
+
+function formatDebugMs(value) {
+  return value == null ? '--' : `${Math.round(Number(value) || 0)}ms`
+}
+
+function updateRiftDebugPanel(debug) {
+  if (!els.riftDebugPanel || !els.riftDebugText) {
+    return
+  }
+  els.riftDebugPanel.classList.toggle('hidden', !state.riftDebugEnabled)
+  if (!state.riftDebugEnabled) {
+    return
+  }
+  const trace = debug && debug.riftTransition
+  if (!trace) {
+    els.riftDebugText.textContent = 'open rift to trace'
+    return
+  }
+  const durations = trace.durations || {}
+  els.riftDebugText.textContent = [
+    `action: ${trace.action || '--'}`,
+    `request: ${formatDebugMs(durations.requestStartMs)}`,
+    `response: ${formatDebugMs(durations.responseReceivedMs)}`,
+    `snapshot: ${formatDebugMs(durations.snapshotAppliedMs)}`,
+    `hero move: ${formatDebugMs(durations.firstVisualHeroMoveMs)}`,
+    `camera move: ${formatDebugMs(durations.firstVisualCameraMoveMs)}`,
+    `visual ready: ${formatDebugMs(durations.visualReadyMs)}`
+  ].join('\n')
 }
 
 function applyCameraDamping(targetX, targetY, frameDelta) {
@@ -2925,6 +3548,10 @@ function lerp(a, b, amount) {
 }
 
 function draw(timestamp) {
+  if (shouldThrottleRenderFrame(timestamp)) {
+    window.requestAnimationFrame(draw)
+    return
+  }
   const previousRenderAt = state.lastRenderAt || timestamp
   const frameDelta = Math.min(VISUAL_MAX_FRAME_DELTA_MS, Math.max(0, timestamp - previousRenderAt))
   state.lastRenderAt = timestamp
@@ -4973,7 +5600,11 @@ function drawWeaponHead(type, reach, palette = FALLBACK_GEAR_PALETTES.white, app
 }
 
 function pixelMonsterRecord(entity) {
-  const name = entity.name || ''
+  const exact = entity && (MONSTER_KIND_SPRITES[entity.kind] || MONSTER_KIND_SPRITES[entity.name])
+  if (exact && PIXEL_SPRITES.monsters[exact]) {
+    return PIXEL_SPRITES.monsters[exact]
+  }
+  const name = entity.name || entity.kind || ''
   if (entity.role === 'boss') {
     return PIXEL_SPRITES.monsters.forest_boss
   }
@@ -4986,11 +5617,41 @@ function pixelMonsterRecord(entity) {
   return PIXEL_SPRITES.monsters.slime
 }
 
+function recentMonsterAttackEffect(entity) {
+  if (!entity) {
+    return null
+  }
+  const now = state.lastRenderAt || window.performance.now()
+  state.monsterAttackEffects = state.monsterAttackEffects.filter(
+    (effect) => now - effect.createdAt < ATTACK_EFFECT_DURATION_MS
+  )
+  const entityId = entity.id || ''
+  return state.monsterAttackEffects.find((effect) => effect.monsterId === entityId) || null
+}
+
 function pixelMonsterAction(entity) {
   if (!entity) return 'idle'
   if (Number(entity.hp || 0) <= 0) return 'death'
-  if (entity.role === 'boss') return 'attack'
-  return 'walk'
+  if (recentMonsterAttackEffect(entity)) return 'attack'
+  if (movingEntity(entity)) return 'walk'
+  return 'idle'
+}
+
+function pixelMonsterDrawScale(entity) {
+  const threat = Math.max(1, Number(entity && entity.threat || 1))
+  return Math.min(1.22, 1 + (threat - 1) * 0.08)
+}
+
+function pixelMonsterDrawSize(entity, sprite = null) {
+  const record = sprite || pixelMonsterRecord(entity)
+  if (!record) {
+    return null
+  }
+  const drawScale = pixelMonsterDrawScale(entity)
+  return {
+    drawWidth: Number(record.drawWidth || record.frameWidth) * drawScale,
+    drawHeight: Number(record.drawHeight || record.frameHeight) * drawScale
+  }
 }
 
 function drawPixelMonster(x, y, entity) {
@@ -4998,11 +5659,10 @@ function drawPixelMonster(x, y, entity) {
   if (!sprite) {
     return false
   }
-  const threat = Math.max(1, Number(entity.threat || 1))
+  const size = pixelMonsterDrawSize(entity, sprite)
   const scaled = {
     ...sprite,
-    drawWidth: Number(sprite.drawWidth || sprite.frameWidth) * Math.min(1.22, 1 + (threat - 1) * 0.08),
-    drawHeight: Number(sprite.drawHeight || sprite.frameHeight) * Math.min(1.22, 1 + (threat - 1) * 0.08)
+    ...size
   }
   return drawSpriteSheetFrameBottom(
     scaled,
@@ -5022,24 +5682,19 @@ function drawMonster(x, y, entity) {
   const boss = entity.role === 'boss'
   const scale = boss ? 1.45 : 1
   const threatStyle = monsterThreatStyle(entity)
-  drawHealthBar(x - 26 * scale, y - 60 * scale, 52 * scale, 7, entity.hp, entity.max_hp, boss ? '#ffca55' : threatStyle.bar)
   const frames = monsterSpriteFrames(entity)
   const key = monsterSpriteKey(entity)
   const name = entity.name || ''
   const width = boss ? 94 : name.includes('mushroom') ? 48 : 66
   const height = boss ? 92 : name.includes('mushroom') ? 56 : 58
   const flightLift = name.includes('bat') || name.includes('wisp') || name.includes('harpy') || name.includes('mote') ? 26 : 0
+  const pixelSize = pixelMonsterDrawSize(entity)
+  const healthWidth = pixelSize ? Math.max(52 * scale, pixelSize.drawWidth * 0.62) : 52 * scale
+  const healthY = pixelSize ? y - flightLift + 5 - pixelSize.drawHeight - (boss ? 14 : 10) : y - 60 * scale
+  drawHealthBar(x - healthWidth / 2, healthY, healthWidth, 7, entity.hp, entity.max_hp, boss ? '#ffca55' : threatStyle.bar)
   const flipTowardHero = monsterFacingFlip(entity)
   const drewPixelMonster = drawPixelMonster(x, y - flightLift + 5, entity)
   if (drewPixelMonster) {
-    drawMonsterThreatOverlay(x, y - flightLift + 5, boss ? 126 : 72, boss ? 126 : 72, threatStyle)
-    if (boss) {
-      ctx.strokeStyle = 'rgba(255, 202, 85, 0.72)'
-      ctx.lineWidth = 3
-      ctx.beginPath()
-      ctx.ellipse(x, y - 56, 54, 42, 0, 0, Math.PI * 2)
-      ctx.stroke()
-    }
     return
   }
   const drewMonster = frames
@@ -5086,7 +5741,8 @@ function drawMonster(x, y, entity) {
 }
 
 function monsterFacingFlip(entity) {
-  return false
+  const sprite = pixelMonsterRecord(entity)
+  return Boolean(sprite && String(sprite.key || '').startsWith('pixelMonster'))
 }
 
 function monsterThreatStyle(entity) {
@@ -5433,7 +6089,22 @@ els.enterRiftButton.addEventListener('click', () => {
   if (!snapshot) {
     return
   }
+  startRiftTransitionTrace('enter')
+  warmRiftAssets()
   postAction('/rift/enter', { floor: snapshot.rift.unlocked_floor }, t('enterRift'))
+})
+
+els.autoRiftButton.addEventListener('click', () => {
+  const snapshot = state.snapshot
+  if (!snapshot || !snapshot.rift) {
+    return
+  }
+  const autoRift = Boolean(snapshot.rift.auto)
+  if (!autoRift) {
+    startRiftTransitionTrace('auto')
+    warmRiftAssets()
+  }
+  postAction('/rift/auto', { enabled: !autoRift }, autoRift ? t('autoRiftOff') : t('autoRiftOn'))
 })
 
 els.leaveRiftButton.addEventListener('click', () => {
@@ -5687,11 +6358,14 @@ els.newCharacterButton.addEventListener('click', () => {
   })
 })
 
-window.addEventListener('resize', resizeCanvas)
+window.addEventListener('resize', handleViewportRuntimeChange)
+document.addEventListener('visibilitychange', handleViewportRuntimeChange)
 resizeCanvas()
 state.settings = loadStoredSettings()
+state.riftDebugEnabled = new URLSearchParams(window.location.search).get('debug') === 'rift'
 applySettings()
 setGender('male')
 loadEquipmentTranslations()
 bootstrapProfile()
+scheduleRiftAssetWarmup()
 window.requestAnimationFrame(draw)

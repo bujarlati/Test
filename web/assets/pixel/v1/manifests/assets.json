@@ -601,6 +601,601 @@
           "frameMs": 110
         }
       }
+    },
+    "forest_slime": {
+      "image": "/web/assets/pixel/v1/monsters/common/forest_slime.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 70,
+      "drawHeight": 70,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "thorn_boar": {
+      "image": "/web/assets/pixel/v1/monsters/common/thorn_boar.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 78,
+      "drawHeight": 74,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "moss_imp": {
+      "image": "/web/assets/pixel/v1/monsters/common/moss_imp.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 72,
+      "drawHeight": 72,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "wild_mushroom": {
+      "image": "/web/assets/pixel/v1/monsters/common/wild_mushroom.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 74,
+      "drawHeight": 74,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "bark_guard": {
+      "image": "/web/assets/pixel/v1/monsters/common/bark_guard.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 82,
+      "drawHeight": 82,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "cave_bat": {
+      "image": "/web/assets/pixel/v1/monsters/common/cave_bat.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 70,
+      "drawHeight": 70,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "crystal_lurker": {
+      "image": "/web/assets/pixel/v1/monsters/common/crystal_lurker.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 76,
+      "drawHeight": 76,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "stone_crawler": {
+      "image": "/web/assets/pixel/v1/monsters/common/stone_crawler.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 78,
+      "drawHeight": 72,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "cloud_wisp": {
+      "image": "/web/assets/pixel/v1/monsters/common/cloud_wisp.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 70,
+      "drawHeight": 70,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "storm_harpy": {
+      "image": "/web/assets/pixel/v1/monsters/common/storm_harpy.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 80,
+      "drawHeight": 80,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "sun_mote": {
+      "image": "/web/assets/pixel/v1/monsters/common/sun_mote.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 70,
+      "drawHeight": 70,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "rust_guard": {
+      "image": "/web/assets/pixel/v1/monsters/common/rust_guard.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 78,
+      "drawHeight": 78,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "hollow_knight": {
+      "image": "/web/assets/pixel/v1/monsters/common/hollow_knight.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 80,
+      "drawHeight": 80,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "cursed_squire": {
+      "image": "/web/assets/pixel/v1/monsters/common/cursed_squire.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "drawWidth": 76,
+      "drawHeight": 76,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "cave_warden": {
+      "image": "/web/assets/pixel/v1/monsters/bosses/cave_warden.png",
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "drawWidth": 148,
+      "drawHeight": 148,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "tempest_seraph": {
+      "image": "/web/assets/pixel/v1/monsters/bosses/tempest_seraph.png",
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "drawWidth": 152,
+      "drawHeight": 152,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
+    },
+    "throne_keeper": {
+      "image": "/web/assets/pixel/v1/monsters/bosses/throne_keeper.png",
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "drawWidth": 150,
+      "drawHeight": 150,
+      "source": "pixellab",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 8,
+          "frameMs": 120
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8,
+          "frameMs": 92
+        },
+        "attack": {
+          "row": 2,
+          "frames": 8,
+          "frameMs": 76
+        },
+        "hurt": {
+          "row": 3,
+          "frames": 4,
+          "frameMs": 90
+        },
+        "death": {
+          "row": 4,
+          "frames": 8,
+          "frameMs": 110
+        }
+      }
     }
   },
   "maps": {

@@ -33,6 +33,7 @@ def engine_to_save(engine: GameEngine) -> dict[str, Any]:
         "mode": engine.mode,
         "forest_depth": engine.forest_depth,
         "unlocked_rift_floor": engine.unlocked_rift_floor,
+        "auto_rift": engine.auto_rift,
         "active_rift": rift_to_save(engine.active_rift),
         "treasure_mimics_defeated": engine.treasure_mimics_defeated,
         "market": market_to_save(engine.market),
@@ -59,6 +60,7 @@ def engine_from_save(data: dict[str, Any]) -> GameEngine:
     engine.mode = str(data.get("mode", "forest"))
     engine.forest_depth = int(data.get("forest_depth", 1))
     engine.unlocked_rift_floor = int(data.get("unlocked_rift_floor", 1))
+    engine.auto_rift = bool(data.get("auto_rift", False))
     engine.active_rift = rift_from_save(data.get("active_rift"))
     engine.treasure_mimics_defeated = int(data.get("treasure_mimics_defeated", 0))
     engine.market = market_from_save(data.get("market", {}))

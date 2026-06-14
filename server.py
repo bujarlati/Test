@@ -29,6 +29,7 @@ WEB_ROOT = Path(__file__).with_name("web")
 DATABASE_PATH = Path(os.environ.get("IDLE_FOREST_DB_PATH", Path(__file__).with_name("data") / "idle_forest.db"))
 LEGACY_SAVE_PATH = Path(os.environ.get("IDLE_FOREST_SAVE_PATH", Path(__file__).with_name("data") / "savegame.json"))
 SAVE_STORE = SQLiteSaveStore(DATABASE_PATH, legacy_store=SaveStore(LEGACY_SAVE_PATH))
+TICK_AUTOSAVE_SECONDS = 5.0
 
 
 def _safe_print(message: str) -> None:
@@ -165,6 +166,8 @@ class RuntimeState:
     def __init__(self, profile: ProfileSession, engine: GameEngine) -> None:
         self.profile = profile
         self.engine = engine
+        self.lock = threading.RLock()
+        self.last_autosave_seconds = float(engine.time_seconds)
 
 
 PROFILE = ProfileSession()
@@ -198,10 +201,14 @@ def _load_engine() -> GameEngine:
 
 
 def _save_game() -> None:
+    global LOCAL_LAST_AUTOSAVE_SECONDS
     SAVE_STORE.save(PROFILE.to_save(), ENGINE)
+    LOCAL_LAST_AUTOSAVE_SECONDS = float(ENGINE.time_seconds)
 
 
 ENGINE = _load_engine()
+ENGINE_LOCK = threading.RLock()
+LOCAL_LAST_AUTOSAVE_SECONDS = float(ENGINE.time_seconds)
 
 
 def _runtime_for_character(character_id: str) -> RuntimeState:
@@ -215,6 +222,15 @@ def _runtime_for_character(character_id: str) -> RuntimeState:
 
 def _save_character_runtime(character_id: str, runtime: RuntimeState) -> None:
     SAVE_STORE.save_character(character_id, runtime.profile.to_save(), runtime.engine)
+    runtime.last_autosave_seconds = float(runtime.engine.time_seconds)
+
+
+def _runtime_needs_tick_autosave(runtime: RuntimeState) -> bool:
+    return float(runtime.engine.time_seconds) - runtime.last_autosave_seconds >= TICK_AUTOSAVE_SECONDS
+
+
+def _local_engine_needs_tick_autosave() -> bool:
+    return float(ENGINE.time_seconds) - LOCAL_LAST_AUTOSAVE_SECONDS >= TICK_AUTOSAVE_SECONDS
 
 
 def _snapshot_for_character(character_id: str, runtime: RuntimeState) -> dict[str, Any]:
@@ -531,14 +547,18 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                 if active is not None:
                     _, character_id, runtime = active
                     seconds = float(payload.get("seconds", 1))
-                    runtime.engine.advance(seconds)
-                    _save_character_runtime(character_id, runtime)
-                    snapshot = _snapshot_for_character(character_id, runtime)
+                    with runtime.lock:
+                        runtime.engine.advance(seconds)
+                        if _runtime_needs_tick_autosave(runtime):
+                            _save_character_runtime(character_id, runtime)
+                        snapshot = _snapshot_for_character(character_id, runtime)
                     self._send_json(snapshot)
                     return
                 seconds = float(payload.get("seconds", 1))
-                snapshot = ENGINE.advance(seconds)
-                _save_game()
+                with ENGINE_LOCK:
+                    snapshot = ENGINE.advance(seconds)
+                    if _local_engine_needs_tick_autosave():
+                        _save_game()
                 self._send_json(snapshot)
                 return
             if path == "/rift/enter":
@@ -570,6 +590,21 @@ class IdleForestHandler(BaseHTTPRequestHandler):
                 snapshot = ENGINE.snapshot()
                 _save_game()
                 self._send_json(snapshot)
+                return
+            if path == "/rift/auto":
+                enabled = bool(payload.get("enabled", False))
+                active = self._active_runtime_or_none()
+                if active is not None:
+                    _, character_id, runtime = active
+                    rift = runtime.engine.set_auto_rift(enabled)
+                    _save_character_runtime(character_id, runtime)
+                    snapshot = _snapshot_for_character(character_id, runtime)
+                    self._send_json({"rift": rift.to_dict() if rift is not None else None, "snapshot": snapshot})
+                    return
+                rift = ENGINE.set_auto_rift(enabled)
+                snapshot = ENGINE.snapshot()
+                _save_game()
+                self._send_json({"rift": rift.to_dict() if rift is not None else None, "snapshot": snapshot})
                 return
             if path == "/forest/deepen":
                 active = self._active_runtime_or_none()
@@ -843,6 +878,9 @@ class IdleForestHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self._send_cors_headers()
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

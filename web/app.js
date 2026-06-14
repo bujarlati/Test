@@ -71,11 +71,11 @@ const HERO_CAMERA_MAX_LEAD = 28
 const HERO_CAMERA_MAX_LAG = 42
 const CAMERA_DAMPING = 18
 const VISUAL_ENTITY_DAMPING = 14
-const MONSTER_SPAWN_SCREEN_BUFFER = 820
-const COMBAT_VISUAL_RANGE_GRACE = 16
-const LOOT_FLOAT_DURATION_MS = 2400
-const ATTACK_EFFECT_DURATION_MS = 520
-const PIXEL_ASSET_VERSION = 'assassin-v82'
+  const MONSTER_SPAWN_SCREEN_BUFFER = 820
+  const COMBAT_VISUAL_RANGE_GRACE = 16
+  const LOOT_FLOAT_DURATION_MS = 2400
+  const ATTACK_EFFECT_DURATION_MS = 520
+const PIXEL_ASSET_VERSION = 'assassin-v87'
 const DEFAULT_SETTINGS = {
   paused: false,
   volume: 0.7,
@@ -95,6 +95,7 @@ const UI_TEXT = {
     defense: '防御',
     moveSpeed: '移速',
     attackSpeed: '攻速',
+    attackRange: '距离',
     hpRegen: '回复',
     power: '战力',
     seconds: '秒',
@@ -122,6 +123,14 @@ const UI_TEXT = {
     resumed: '继续冒险',
     volume: '音量',
     language: '语言',
+    autoSellRarity: '\u81ea\u52a8\u51fa\u552e',
+    autoSellOff: '\u5173\u95ed',
+    rarityWhite: '\u767d\u8272',
+    rarityGreen: '\u7eff\u8272',
+    rarityBlue: '\u84dd\u8272',
+    rarityPurple: '\u7d2b\u8272',
+    rarityGold: '\u91d1\u8272',
+    rarityRed: '\u7ea2\u8272',
     emptySlot: '空缺',
     waitingDrop: '等待掉落',
     noEquipment: '暂无装备',
@@ -168,11 +177,19 @@ const UI_TEXT = {
     donation: '捐赠',
     donations: '捐赠',
     buyDonation: '购买捐赠',
+    quantity: '\u6570\u91cf',
     recycle: '回收',
     recycling: '回收中',
     recycleAll: '一键回收',
     sellSystem: '卖给系统',
     sellingSystem: '售出中',
+    enhance: '强化',
+    enhancing: '强化中',
+    enhanceGold: '强化金币',
+    refreshShop: '刷新强化',
+    refreshingShop: '刷新中',
+    fivePiece: '5件终极',
+    setPool: '套装池',
     expandTalent: '捐赠解锁天赋',
     expandingTalent: '解锁中',
     shopBuy: '购买',
@@ -190,6 +207,7 @@ const UI_TEXT = {
     defense: 'Defense',
     moveSpeed: 'Move Speed',
     attackSpeed: 'Atk Speed',
+    attackRange: 'Range',
     hpRegen: 'Regen',
     power: 'Power',
     seconds: 'sec',
@@ -217,6 +235,14 @@ const UI_TEXT = {
     resumed: 'Adventure resumed',
     volume: 'Volume',
     language: 'Language',
+    autoSellRarity: 'Auto Sell',
+    autoSellOff: 'Off',
+    rarityWhite: 'White',
+    rarityGreen: 'Green',
+    rarityBlue: 'Blue',
+    rarityPurple: 'Purple',
+    rarityGold: 'Gold',
+    rarityRed: 'Red',
     emptySlot: 'Empty',
     waitingDrop: 'Waiting for drop',
     noEquipment: 'No gear equipped',
@@ -263,11 +289,19 @@ const UI_TEXT = {
     donation: 'Donation',
     donations: 'Donations',
     buyDonation: 'Buy Donation',
+    quantity: 'Qty',
     recycle: 'Recycle',
     recycling: 'Recycling',
     recycleAll: 'Recycle All',
     sellSystem: 'Sell to System',
     sellingSystem: 'Selling',
+    enhance: 'Enhance',
+    enhancing: 'Enhancing',
+    enhanceGold: 'Enhance Gold',
+    refreshShop: 'Refresh',
+    refreshingShop: 'Refreshing',
+    fivePiece: '5pc Ultimate',
+    setPool: 'Set Pool',
     expandTalent: 'Unlock Talent',
     expandingTalent: 'Unlocking',
     shopBuy: 'Buy',
@@ -368,7 +402,9 @@ const state = {
   eventsRenderSignature: '',
   marketActionInFlightIds: new Set(),
   inventoryActionInFlightIds: new Set(),
+  equipmentEnhanceInFlightIds: new Set(),
   systemShopActionInFlightSkus: new Set(),
+  systemShopEnhanceInFlightSkus: new Set(),
   recycleAllInFlight: false,
   talentEvolutionInFlight: false,
   lastRenderAt: 0,
@@ -925,6 +961,7 @@ const els = {
   defenseText: document.querySelector('#defenseText'),
   moveSpeedText: document.querySelector('#moveSpeedText'),
   attackSpeedText: document.querySelector('#attackSpeedText'),
+  attackRangeText: document.querySelector('#attackRangeText'),
   hpRegenText: document.querySelector('#hpRegenText'),
   powerText: document.querySelector('#powerText'),
   modeText: document.querySelector('#modeText'),
@@ -944,6 +981,7 @@ const els = {
   pauseToggle: document.querySelector('#pauseToggle'),
   volumeSlider: document.querySelector('#volumeSlider'),
   languageSelect: document.querySelector('#languageSelect'),
+  autoSellRaritySelect: document.querySelector('#autoSellRaritySelect'),
   listingPanel: document.querySelector('#listingPanel'),
   listingTitle: document.querySelector('#listingTitle'),
   listingCancelButton: document.querySelector('#listingCancelButton'),
@@ -1108,6 +1146,10 @@ function applySettings() {
   if (els.languageSelect) {
     els.languageSelect.value = currentLanguage()
   }
+  if (els.autoSellRaritySelect) {
+    const rarity = state.snapshot && state.snapshot.hero ? state.snapshot.hero.auto_sell_rarity : null
+    els.autoSellRaritySelect.value = rarity || 'none'
+  }
   document.documentElement.lang = currentLanguage()
   setMasterVolume(state.settings.volume)
   applyStaticTranslations()
@@ -1135,8 +1177,9 @@ function applyStaticTranslations() {
   setText('.hero-strip .stat:nth-child(5) span', t('defense'))
   setText('.hero-strip .stat:nth-child(6) span', t('moveSpeed'))
   setText('.hero-strip .stat:nth-child(7) span', t('attackSpeed'))
-  setText('.hero-strip .stat:nth-child(8) span', t('hpRegen'))
-  setText('.hero-strip .stat:nth-child(9) span', t('power'))
+  setText('.hero-strip .stat:nth-child(8) span', t('attackRange'))
+  setText('.hero-strip .stat:nth-child(9) span', t('hpRegen'))
+  setText('.hero-strip .stat:nth-child(10) span', t('power'))
   setText('#tickButton', t('pushTen'))
   setText('#equipBestButton', t('equipBest'))
   setText('#resetButton', t('reset'))
@@ -1147,6 +1190,15 @@ function applyStaticTranslations() {
   if (rows[0]) rows[0].textContent = t('pauseLabel')
   if (rows[1]) rows[1].textContent = t('volume')
   if (rows[2]) rows[2].textContent = t('language')
+  setText('#autoSellRarityLabel', t('autoSellRarity'))
+  setText('#autoSellOffOption', t('autoSellOff'))
+  const autoSellSuffix = currentLanguage() === 'zh-CN' ? '\u53ca\u4ee5\u4e0b' : ' and below'
+  setText('#autoSellWhiteOption', `${t('rarityWhite')}${autoSellSuffix}`)
+  setText('#autoSellGreenOption', `${t('rarityGreen')}${autoSellSuffix}`)
+  setText('#autoSellBlueOption', `${t('rarityBlue')}${autoSellSuffix}`)
+  setText('#autoSellPurpleOption', `${t('rarityPurple')}${autoSellSuffix}`)
+  setText('#autoSellGoldOption', `${t('rarityGold')}${autoSellSuffix}`)
+  setText('#autoSellRedOption', `${t('rarityRed')}${autoSellSuffix}`)
   if (els.rollCountText && !state.creationDraft) {
     els.rollCountText.textContent = remainingRollsText(3)
   }
@@ -2060,8 +2112,12 @@ function applySnapshot(snapshot) {
   els.defenseText.textContent = hero.defense
   els.moveSpeedText.textContent = `${Number(hero.speed || 0).toFixed(1)} / ${t('seconds')}`
   els.attackSpeedText.textContent = `${Number(hero.attack_speed || 0).toFixed(2)} / ${t('seconds')}`
+  els.attackRangeText.textContent = Number(hero.attack_range || 0).toFixed(0)
   els.hpRegenText.textContent = `${Number(hero.hp_regen || 0).toFixed(1)} / ${t('seconds')}`
   els.powerText.textContent = forest.hero_power || rift.hero_power
+  if (els.autoSellRaritySelect) {
+    els.autoSellRaritySelect.value = hero.auto_sell_rarity || 'none'
+  }
   els.modeText.textContent = snapshot.mode === 'rift' ? t('rift') : forestDepth > 1 ? `${t('deepForest')} ${forestDepth}` : t('forest')
   els.riftStateText.textContent = describeRiftState(rift, forest, snapshot.mode)
   els.enterRiftButton.disabled = active
@@ -2183,10 +2239,12 @@ function equipmentSlotsSignature(slots, equipped) {
 }
 
 function equippedSignature(equipped) {
-  return Object.keys(equipped || {})
-    .sort()
-    .map((slot) => `${slot}:${itemSignature(equipped[slot])}`)
-    .join('|')
+  return JSON.stringify({
+    enhancePending: Array.from(state.equipmentEnhanceInFlightIds).sort(),
+    items: Object.keys(equipped || {})
+      .sort()
+      .map((slot) => [slot, itemSignature(equipped[slot])])
+  })
 }
 
 function talentsSignature(talents, scrolls, talentMeta) {
@@ -2254,7 +2312,9 @@ function renderEquipped(equipped, force = true) {
     return
   }
   const bonuses = (state.snapshot && state.snapshot.hero && state.snapshot.hero.set_bonuses) || []
-  els.equippedList.innerHTML = items.map((item) => itemHtml(item, '')).join('') + renderSetBonuses(bonuses)
+  els.equippedList.innerHTML = items
+    .map((item) => itemHtml(item, enhanceActionsHtml(item, 'equipped')))
+    .join('') + renderSetBonuses(bonuses)
 }
 
 function itemSignature(item) {
@@ -2277,7 +2337,8 @@ function itemSignature(item) {
     special: item.special,
     set_id: item.set_id,
     set_name: item.set_name,
-    set_piece: item.set_piece
+    set_piece: item.set_piece,
+    set_bonus: item.set_bonus
   })
 }
 
@@ -2285,6 +2346,7 @@ function inventorySignature(items) {
   return JSON.stringify({
     recycleAllInFlight: state.recycleAllInFlight,
     pending: Array.from(state.inventoryActionInFlightIds).sort(),
+    enhancePending: Array.from(state.equipmentEnhanceInFlightIds).sort(),
     items: items.map((item) => itemSignature(item))
   })
 }
@@ -2316,7 +2378,9 @@ function systemShopSignature(items, heroGold) {
       level: item.level,
       price: item.price,
       affordable: item.affordable,
-      description: item.description
+      description: item.description,
+      item: item.item ? itemSignature(item.item) : null,
+      enhancePending: state.systemShopEnhanceInFlightSkus.has(item.sku)
     }))
   })
 }
@@ -2346,6 +2410,9 @@ function systemShopPreviewHtml(entry) {
 }
 
 function systemShopPreviewItem(entry) {
+  if (entry && entry.item) {
+    return entry.item
+  }
   const slot = entry.slot || 'weapon'
   const rarity = entry.rarity || 'rainbow'
   const model = {
@@ -2371,6 +2438,18 @@ function systemShopPreviewItem(entry) {
       icon_shape: slot === 'ring' ? 'pet' : 'slash'
     }
   }
+}
+
+function systemShopEnhanceAmount(card, fallback = 10000) {
+  const input = card ? card.querySelector('input[data-role="system-shop-enhance"]') : null
+  const value = Number(input && input.value)
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback
+}
+
+function systemShopPurchaseQuantity(card, fallback = 1) {
+  const input = card ? card.querySelector('input[data-role="system-shop-quantity"]') : null
+  const value = Number(input && input.value)
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback
 }
 
 function systemShopTranslation(entry) {
@@ -2412,11 +2491,34 @@ function renderSystemShop(items, heroGold, force = true) {
   els.systemShopList.innerHTML = items
     .map((entry) => {
       const pending = state.systemShopActionInFlightSkus.has(entry.sku)
+      const enhancePending = state.systemShopEnhanceInFlightSkus.has(entry.sku)
       const affordable = entry.affordable !== false && Number(heroGold || 0) >= Number(entry.price || 0)
       const rarity = entry.rarity || (entry.kind === 'donation' ? 'gold' : 'white')
+      const previewItem = entry.item || null
+      const enhanceMin = Number(entry.enhance_min || 10000)
       const subLine = entry.kind === 'donation'
         ? t('buyDonation')
-        : `${slotLabel(entry.slot)} · ${rarityLabel(entry.rarity)} · Lv.${entry.level || 1}`
+        : itemStatLine(previewItem || systemShopPreviewItem(entry))
+      const setPool = entry.kind === 'equipment'
+        ? `<div class="item-sub">${t('setPool')} ${escapeHtml((entry.set_options || []).map(translateEquipmentTerm).join(' / '))}</div>`
+        : ''
+      const enhanceControls = entry.kind === 'equipment'
+        ? `
+          <label class="enhance-inline">
+            <span>${t('enhanceGold')}</span>
+            <input data-role="system-shop-enhance" type="number" min="${enhanceMin}" step="1000" value="${enhanceMin}" inputmode="numeric" />
+          </label>
+          <button class="muted" data-action="system-shop-enhance" data-sku="${escapeHtml(entry.sku)}" ${enhancePending ? 'disabled' : ''}>${enhancePending ? t('refreshingShop') : t('refreshShop')}</button>
+        `
+        : ''
+      const quantityControls = entry.kind === 'donation'
+        ? `
+          <label class="enhance-inline">
+            <span>${t('quantity')}</span>
+            <input data-role="system-shop-quantity" type="number" min="1" step="1" value="1" inputmode="numeric" />
+          </label>
+        `
+        : ''
       return `
         <article class="item shop-item rarity-${rarity}">
           <div class="item-visual">
@@ -2428,8 +2530,12 @@ function renderSystemShop(items, heroGold, force = true) {
               </div>
               <div class="item-sub">${subLine}</div>
               <div class="item-sub">${escapeHtml(systemShopDescription(entry))}</div>
+              ${previewItem ? specialLine(previewItem) : ''}
+              ${setPool}
               <div class="item-actions">
+                ${quantityControls}
                 <button data-action="system-shop-buy" data-sku="${escapeHtml(entry.sku)}" ${pending || !affordable ? 'disabled' : ''}>${pending ? t('shopBuying') : t('shopBuy')}</button>
+                ${enhanceControls}
               </div>
             </div>
           </div>
@@ -2465,11 +2571,24 @@ function renderInventory(items, force = true) {
           <button data-action="equip" data-id="${item.id}" ${pending ? 'disabled' : ''}>${t('equip')}</button>
           <button class="muted" data-action="list" data-id="${item.id}" data-price="${defaultPrice}" ${pending ? 'disabled' : ''}>${t('list')}</button>
           <button class="muted" data-action="recycle" data-id="${item.id}" ${pending ? 'disabled' : ''}>${pending ? t('recycling') : t('recycle')}</button>
+          ${enhanceActionsHtml(item, 'inventory')}
         </div>
       `
       return itemHtml(item, actions)
     })
     .join('')
+}
+
+function enhanceActionsHtml(item, source) {
+  const pending = state.equipmentEnhanceInFlightIds.has(item.id)
+  const suggested = Math.max(1000, Math.floor((item.score || 1) * 60))
+  return `
+    <label class="enhance-inline">
+      <span>${t('enhanceGold')}</span>
+      <input data-role="equipment-enhance" data-id="${item.id}" type="number" min="1" step="1000" value="${suggested}" inputmode="numeric" />
+    </label>
+    <button class="muted" data-action="enhance-equipment" data-source="${source}" data-id="${item.id}" ${pending ? 'disabled' : ''}>${pending ? t('enhancing') : t('enhance')}</button>
+  `
 }
 
 function renderMarket(listings, heroId, force = true) {
@@ -2627,7 +2746,8 @@ function trackAttackEffects(events, scene) {
       targetX,
       rarity: (weapon && weapon.rarity) || 'white',
       appearance: weapon ? equipmentAppearance(weapon) : null,
-      damage: (event.data && event.data.damage) || 0,
+      damage: Math.max(1, Number((event.data && event.data.damage) || 1)),
+      damageColor: true,
       createdAt: state.lastRenderAt || window.performance.now()
     })
   })
@@ -2774,8 +2894,8 @@ function itemStatLine(item) {
   if (item.attack_speed) parts.push(`${t('attackSpeed')} ${Number(item.attack_speed).toFixed(2)}`)
   if (item.hp_regen) parts.push(`${t('hpRegen')} ${Number(item.hp_regen).toFixed(1)}`)
   if (item.move_speed) parts.push(`${t('moveSpeed')} +${Math.round(Number(item.move_speed) * 100)}%`)
-  if (item.attack_range) parts.push(`${currentLanguage() === 'zh-CN' ? '距离' : 'Range'} +${Number(item.attack_range).toFixed(0)}`)
-  return parts.join(' · ')
+  if (item.attack_range) parts.push(`${currentLanguage() === 'zh-CN' ? '\u8ddd\u79bb' : 'Range'} +${Number(item.attack_range).toFixed(0)}`)
+  return parts.join(' ? ')
 }
 
 function specialLine(item) {
@@ -2785,7 +2905,7 @@ function specialLine(item) {
   return `
     <div class="set-line">
       <span class="badge">${t('specialSet')}</span>
-      ${escapeHtml(translateEquipmentTerm(item.set_name || 'Unknown Set'))} · ${escapeHtml(translateEquipmentTerm(item.set_piece || ''))}
+      ${escapeHtml(translateEquipmentTerm(item.set_name || 'Unknown Set'))} ? ${escapeHtml(translateEquipmentTerm(item.set_piece || ''))}
       <small>${bonusText(item.set_bonus)}</small>
     </div>
   `
@@ -2800,6 +2920,7 @@ function renderSetBonuses(bonuses) {
       <div class="set-bonus">
         ${escapeHtml(translateEquipmentTerm(bonus.set_name || t('specialSet')))} ${bonus.pieces}/${bonus.pieces_required}
         <small>${bonusText(bonus)}</small>
+        ${bonus.super_effect ? `<small>${t('fivePiece')} ${escapeHtml(translateEquipmentTerm(bonus.five_piece_name || bonus.super_effect))}</small>` : ''}
       </div>
     `)
     .join('')
@@ -2813,7 +2934,12 @@ function bonusText(bonus) {
   if (bonus.attack) parts.push(`${t('attack')} +${bonus.attack}`)
   if (bonus.defense) parts.push(`${t('defense')} +${bonus.defense}`)
   if (bonus.max_hp) parts.push(`${t('hp')} +${bonus.max_hp}`)
-  return parts.join(' · ')
+  if (bonus.attack_speed) parts.push(`${t('attackSpeed')} +${Number(bonus.attack_speed).toFixed(2)}`)
+  if (bonus.hp_regen) parts.push(`${t('hpRegen')} +${Number(bonus.hp_regen).toFixed(1)}`)
+  if (bonus.move_speed) parts.push(`${t('moveSpeed')} +${Math.round(Number(bonus.move_speed) * 100)}%`)
+  if (bonus.attack_range) parts.push(`${currentLanguage() === 'zh-CN' ? '\u8ddd\u79bb' : 'Range'} +${Number(bonus.attack_range).toFixed(0)}`)
+  if (bonus.five_piece) parts.push(`${t('fivePiece')} ${translateEquipmentTerm(bonus.five_piece.name || bonus.five_piece.effect || '')}`)
+  return parts.join(' ? ')
 }
 
 function effectLine(effects) {
@@ -3958,7 +4084,58 @@ function drawAttackEffects(scene, cameraX, groundY, worldScale) {
     const reach = Math.max(48, Math.min(160, targetX - startX))
     const y = groundY - 44 - Math.sin(progress * Math.PI) * 8
     drawWeaponRarityBurst(startX, y, reach, progress, profile, effect)
+    if (effect.damageColor && effect.damage > 0) {
+      drawMonsterDamageText(effect.damage, targetX, y, progress, effect)
+    }
   })
+}
+
+function drawMonsterDamageText(damage, x, y, progress, effect = {}) {
+  const amount = Math.max(0, Number(damage))
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return
+  }
+  const style = damageImpactProfile(amount)
+  const floatAlpha = Math.max(0, 1 - progress)
+  const floatY = y - 8 - progress * style.lift - style.lift * 0.35 * Math.sin((effect.key ? effect.key.length : 0) + progress * 8)
+  const size = Math.round(Math.max(12, style.fontSize - progress * 2))
+  const sway = Math.sin(((state.lastRenderAt || 0) / 90) + (Number(amount) * 0.08) + (effect.key ? effect.key.length : 0)) * 2
+  const palette = style.palette
+
+  ctx.save()
+  ctx.globalAlpha = floatAlpha
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'alphabetic'
+  ctx.font = `800 ${size}px "Segoe UI", "Microsoft YaHei", sans-serif`
+  ctx.lineWidth = Math.max(1.5, 2.2 - progress * 0.9)
+  ctx.strokeStyle = 'rgba(9, 15, 13, 0.72)'
+  ctx.strokeText(String(Math.round(amount)), x + sway, floatY)
+  ctx.fillStyle = palette.glow
+  ctx.fillText(String(Math.round(amount)), x + sway, floatY)
+  ctx.restore()
+}
+
+function damageImpactProfile(damage) {
+  const value = Math.max(0, Math.floor(Number(damage) || 0))
+  if (value >= 140) {
+    return { palette: FALLBACK_GEAR_PALETTES.red, fontSize: 38, lift: 34 }
+  }
+  if (value >= 100) {
+    return { palette: FALLBACK_GEAR_PALETTES.red, fontSize: 34, lift: 28 }
+  }
+  if (value >= 60) {
+    return { palette: FALLBACK_GEAR_PALETTES.gold, fontSize: 30, lift: 26 }
+  }
+  if (value >= 35) {
+    return { palette: FALLBACK_GEAR_PALETTES.purple, fontSize: 27, lift: 24 }
+  }
+  if (value >= 20) {
+    return { palette: FALLBACK_GEAR_PALETTES.blue, fontSize: 23, lift: 22 }
+  }
+  if (value >= 10) {
+    return { palette: FALLBACK_GEAR_PALETTES.green, fontSize: 20, lift: 20 }
+  }
+  return { palette: FALLBACK_GEAR_PALETTES.white, fontSize: 16, lift: 18 }
 }
 
 function attackEffectProfile(rarity) {
@@ -4387,6 +4564,7 @@ function drawHero(x, y, entity) {
   }
   const pixelInfo = pixelHeroRenderInfo(skeleton, entity)
   const equipmentSkeleton = pixelInfo && pixelInfo.anchors ? pixelInfo.anchors : skeleton
+  drawFivePieceSetEffects(equipmentSkeleton, entity)
   drawEquippedFootCircle(equipmentSkeleton, (entity.equipped || {}).boots)
   drawEquippedWings(equipmentSkeleton, (entity.equipped || {}).armor)
   const drewPixelHero = drawPixelHero(skeleton, entity, pixelInfo)
@@ -4729,6 +4907,96 @@ function drawMoteAura(skeleton, style) {
     ctx.fill()
   }
   ctx.restore()
+}
+
+function drawFivePieceSetEffects(skeleton, entity) {
+  const bonuses = (entity && entity.set_bonuses) || []
+  bonuses
+    .filter((bonus) => bonus && bonus.super_effect)
+    .slice(0, 2)
+    .forEach((bonus, index) => {
+      const style = setBonusEffectStyle(bonus.super_effect, index)
+      const now = state.lastRenderAt || 0
+      const pulse = 0.46 + animationPhase(620 + index * 90) * 0.54
+      const center = skeleton.torso || skeleton.hips
+      const feet = skeleton.feetCenter || skeleton.hips || center
+      ctx.save()
+      ctx.globalCompositeOperation = 'lighter'
+      ctx.globalAlpha = 0.36 + pulse * 0.2
+      ctx.strokeStyle = style.color
+      ctx.lineWidth = style.effect === 'rainbow_nova' ? 3 : 2
+      ctx.beginPath()
+      ctx.ellipse(feet.x, feet.y + 7, 42 + pulse * 8 + index * 6, 11 + pulse * 3, now / 900, 0, Math.PI * 2)
+      ctx.stroke()
+      for (let i = 0; i < style.count; i += 1) {
+        const angle = now / style.speed + i * ((Math.PI * 2) / style.count)
+        const radius = style.radius + Math.sin(now / 360 + i) * 7
+        const x = center.x + Math.cos(angle) * radius
+        const y = center.y - 5 + Math.sin(angle * style.wave) * style.height
+        ctx.globalAlpha = 0.28 + animationPhase(360 + i * 17) * 0.42
+        ctx.fillStyle = i % 3 === 0 ? style.secondary : style.color
+        if (style.effect === 'mimicbane_dragon') {
+          triangle(x, y - 5, 9, 12)
+        } else if (style.effect === 'luckseeker_comet') {
+          ctx.fillRect(x - 8, y, 18, 2.4)
+          ctx.beginPath()
+          ctx.arc(x + 8, y, 3.4, 0, Math.PI * 2)
+          ctx.fill()
+        } else {
+          ctx.beginPath()
+          ctx.arc(x, y, style.effect === 'rainbow_nova' ? 3.4 : 2.7, 0, Math.PI * 2)
+          ctx.fill()
+        }
+      }
+      ctx.restore()
+    })
+}
+
+function setBonusEffectStyle(superEffect, index = 0) {
+  const effect = String(superEffect || 'rainbow_nova')
+  const styles = {
+    rainbow_nova: {
+      effect,
+      color: '#8effff',
+      secondary: '#ff78e6',
+      count: 18,
+      radius: 46 + index * 8,
+      height: 46,
+      wave: 1.4,
+      speed: 520,
+    },
+    hoardbound_vortex: {
+      effect,
+      color: '#ffca55',
+      secondary: '#fff36a',
+      count: 14,
+      radius: 39 + index * 7,
+      height: 40,
+      wave: 1.8,
+      speed: 700,
+    },
+    luckseeker_comet: {
+      effect,
+      color: '#68b7ff',
+      secondary: '#fff36a',
+      count: 12,
+      radius: 44 + index * 7,
+      height: 34,
+      wave: 1.2,
+      speed: 610,
+    },
+    mimicbane_dragon: {
+      effect,
+      color: '#ff7a7c',
+      secondary: '#ffca55',
+      count: 15,
+      radius: 48 + index * 9,
+      height: 48,
+      wave: 1.6,
+      speed: 580,
+    },
+  }
+  return styles[effect] || styles.rainbow_nova
 }
 
 function drawHeroRig(skeleton, entity) {
@@ -6151,6 +6419,41 @@ els.languageSelect.addEventListener('change', () => {
   saveSettings()
   applySettings()
 })
+if (els.autoSellRaritySelect) {
+  els.autoSellRaritySelect.addEventListener('change', () => {
+    const rarity = els.autoSellRaritySelect.value === 'none' ? null : els.autoSellRaritySelect.value
+    postAction('/settings/auto-sell-rarity', { rarity }, t('autoSellRarity'))
+  })
+}
+
+function enhanceAmountForButton(button, role) {
+  const card = button.closest('.item')
+  const input = card ? card.querySelector(`input[data-role="${role}"]`) : null
+  const value = Number(input && input.value)
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0
+}
+
+function enhanceEquipment(button) {
+  const itemId = button.dataset.id
+  const gold = enhanceAmountForButton(button, 'equipment-enhance')
+  if (!itemId || gold <= 0 || state.equipmentEnhanceInFlightIds.has(itemId)) {
+    setStatus(t('invalidPrice'), false)
+    return
+  }
+  state.equipmentEnhanceInFlightIds.add(itemId)
+  if (state.snapshot && state.snapshot.hero) {
+    renderInventory(state.snapshot.hero.inventory || [], true)
+    renderEquipped(state.snapshot.hero.equipped || {}, true)
+  }
+  postAction('/equipment/enhance', { item_id: itemId, gold }, t('enhance'))
+    .finally(() => {
+      state.equipmentEnhanceInFlightIds.delete(itemId)
+      if (state.snapshot && state.snapshot.hero) {
+        renderInventory(state.snapshot.hero.inventory || [], true)
+        renderEquipped(state.snapshot.hero.equipped || {}, true)
+      }
+    })
+}
 
 els.inventoryList.addEventListener('click', (event) => {
   const button = event.target.closest('button')
@@ -6185,6 +6488,17 @@ els.inventoryList.addEventListener('click', (event) => {
         }
       })
   }
+  if (action === 'enhance-equipment') {
+    enhanceEquipment(button)
+  }
+})
+
+els.equippedList.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-action="enhance-equipment"]')
+  if (!button || button.disabled) {
+    return
+  }
+  enhanceEquipment(button)
 })
 
 if (els.recycleAllButton) {
@@ -6244,22 +6558,37 @@ els.talentList.addEventListener('click', (event) => {
 
 if (els.systemShopList) {
   els.systemShopList.addEventListener('click', (event) => {
-    const button = event.target.closest('button[data-action="system-shop-buy"]')
+    const button = event.target.closest('button[data-action]')
     if (!button || button.disabled) {
       return
     }
-    const sku = button.dataset.sku
-    if (state.systemShopActionInFlightSkus.has(sku)) {
+    const action = button.dataset.action
+    if (!['system-shop-buy', 'system-shop-enhance'].includes(action)) {
       return
     }
-    state.systemShopActionInFlightSkus.add(sku)
+    const sku = button.dataset.sku
+    const pendingSet = action === 'system-shop-enhance'
+      ? state.systemShopEnhanceInFlightSkus
+      : state.systemShopActionInFlightSkus
+    if (pendingSet.has(sku)) {
+      return
+    }
+    pendingSet.add(sku)
     if (state.snapshot) {
       const heroGold = state.snapshot.hero ? state.snapshot.hero.gold || 0 : 0
       renderSystemShop((state.snapshot.system_shop && state.snapshot.system_shop.items) || [], heroGold, true)
     }
-    postAction('/system-shop/buy', { sku }, t('shopBuy'))
+    const gold = action === 'system-shop-enhance'
+      ? systemShopEnhanceAmount(button.closest('.item'), 10000)
+      : 0
+    const quantity = action === 'system-shop-buy'
+      ? systemShopPurchaseQuantity(button.closest('.item'), 1)
+      : 1
+    const path = action === 'system-shop-enhance' ? '/system-shop/enhance' : '/system-shop/buy'
+    const payload = action === 'system-shop-enhance' ? { sku, gold } : { sku, quantity }
+    postAction(path, payload, action === 'system-shop-enhance' ? t('refreshShop') : t('shopBuy'))
       .finally(() => {
-        state.systemShopActionInFlightSkus.delete(sku)
+        pendingSet.delete(sku)
         if (state.snapshot) {
           const heroGold = state.snapshot.hero ? state.snapshot.hero.gold || 0 : 0
           renderSystemShop((state.snapshot.system_shop && state.snapshot.system_shop.items) || [], heroGold, true)
